@@ -1,4 +1,4 @@
-"""Figure style for the thesis figures: Arial 8 pt, thin axes, no top/right box, PDF text kept as text."""
+"""Figure style for the figures: Arial 8 pt, thin axes, no top/right box, PDF text kept as text."""
 import os
 
 import matplotlib.pyplot as plt
