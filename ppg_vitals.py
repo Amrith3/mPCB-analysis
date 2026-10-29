@@ -9,25 +9,6 @@ from recording import load
 
 WINDOW_S = 30
 
-
-def breathing_rate(x, fs):
-    """Breaths per minute from the autocorrelation, or nan if breathing is not clear."""
-    x = x - np.mean(x)
-    n = len(x)
-    alike = np.correlate(x, x, mode="full")[n - 1:]
-    alike = alike / (n - np.arange(n))
-    alike = alike / alike[0]
-    shortest = int(fs / filters.BREATH_HZ[1])
-    longest = int(fs / filters.BREATH_HZ[0])
-    part = alike[shortest:longest]
-    tops, _ = find_peaks(part)
-    if len(tops) == 0 or np.max(part[tops]) < 0.5:
-        return np.nan
-    good = tops[part[tops] >= 0.8 * np.max(part[tops])]
-    delay = shortest + good[0]
-    return 60 * fs / delay
-
-
 rec = load()
 if "ir_nA" not in rec:
     raise SystemExit("No usable PPG in this recording.")
@@ -69,7 +50,7 @@ for start in np.arange(t[0], t[-1] - WINDOW_S, WINDOW_S):
     p_band = p[band]
     ppg_rate.append(60 * f_band[np.argmax(p_band)])
 
-    rate = breathing_rate(breathing[inside], fs)
+    rate = filters.breathing_rate(breathing[inside], fs)
     breathing_per_minute.append(rate)
     if not np.isnan(rate):
         peaks, _ = find_peaks(breathing[inside], distance=int(0.6 * fs * 60 / rate))

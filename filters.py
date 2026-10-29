@@ -74,6 +74,28 @@ def breathing_band(x, fs):
     return sosfiltfilt(sos, x)
 
 
+def breathing_rate(x, fs):
+    """Breaths per minute from the autocorrelation, or nan if breathing is not clear."""
+    x = x - np.mean(x)
+    n = len(x)
+    alike = np.correlate(x, x, mode="full")[n - 1:]
+    alike = alike / (n - np.arange(n))
+    alike = alike / alike[0]
+    shortest = int(fs / BREATH_HZ[1])
+    longest = int(fs / BREATH_HZ[0])
+    part = alike[shortest:longest]
+    tops, _ = find_peaks(part)
+    if len(tops) == 0 or np.max(part[tops]) < 0.5:
+        return np.nan
+    good = tops[part[tops] >= 0.8 * np.max(part[tops])]
+    k = shortest + good[0]
+    # peak position between samples (parabola through the three points around it)
+    a, b, c = alike[k - 1], alike[k], alike[k + 1]
+    curve = a - 2 * b + c
+    delay = k + 0.5 * (a - c) / curve if curve != 0 else k
+    return 60 * fs / delay
+
+
 def click(fs):
     """An impulse in 256 s of zeros."""
     x = np.zeros(int(256 * fs))
@@ -99,8 +121,9 @@ def ecg_levels(raw, fs):
     return levels
 
 
-def r_waves(ecg, fs):
-    """R-wave sample numbers, found in the 20-90 Hz band per 30 s piece."""
+def r_waves(ecg, fs, pieces_out=None):
+    """R-wave sample numbers, found in the 20-90 Hz band per 30 s piece. If a list is given as
+    pieces_out, each piece is added to it as (first sample, last sample + 1, beat repeat clear)."""
     x = notches(ecg, fs, MAINS_HZ)
     sos = butter(2, [20, min(90, fs / 2 - 10)], "bandpass", fs=fs, output="sos")
     band = sosfiltfilt(sos, x)
@@ -112,17 +135,23 @@ def r_waves(ecg, fs):
         beats, repeat = beats_in(band[piece], fs)
         r.extend(piece[0] + beats)
         clear += repeat
+        if pieces_out is not None:
+            pieces_out.append((piece[0], piece[-1] + 1, repeat))
     r = np.array(r, dtype=int)
     print("R waves: the beat repeats clearly in", clear, "of", pieces, "pieces of 30 s"
           " (few or none: the heart rate may be noise)")
 
-    # move each mark to the ECG maximum from 20 ms before to 5 ms after
+    # move each mark to the R peak from 20 ms before to 5 ms after: the earliest peak at least
+    # 0.6 x the tallest there, so a J wave taller than R is not taken for it
     before = int(0.020 * fs)
     after = int(0.005 * fs)
     r = r[(r > before) & (r < len(ecg) - after - 1)]
     for i in range(len(r)):
         start = r[i] - before
-        r[i] = start + np.argmax(x[start:r[i] + after + 1])
+        seg = x[start:r[i] + after + 1]
+        tops, _ = find_peaks(seg)
+        tops = tops[seg[tops] >= 0.6 * np.max(seg)]
+        r[i] = start + (tops[0] if len(tops) else np.argmax(seg))
     return r
 
 

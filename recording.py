@@ -1,10 +1,23 @@
 """Reads one GUI recording. Change FILE to analyse another one."""
+import os
+import zipfile
+
 import pandas as pd
 
-FILE = r"D:\Users\schwa\Documents\PlatformIO\Projects\mPCB\recordings\mouse_isoflurane_20261022\mouse_30g\mice_anest_20261022_145430.csv"
+DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+FILE = os.path.join(DATA, "mouse_isoflurane_20261022", "mouse_30g", "mice_anest_20261022_145430.csv")
+
+
+def unzip(session):
+    """Unzips data/<session>.zip into data/ the first time."""
+    if not os.path.isdir(os.path.join(DATA, session)):
+        zipfile.ZipFile(os.path.join(DATA, session + ".zip")).extractall(DATA)
 
 
 def load(file=FILE):
+    inside = os.path.relpath(os.path.abspath(file), DATA)
+    if not os.path.exists(file) and not inside.startswith(".."):   # a recording in data/ not unzipped yet
+        unzip(inside.split(os.sep)[0])
     with open(file) as f:
         first_line = f.readline()
 
@@ -27,6 +40,11 @@ def load(file=FILE):
     rec["ecg_raw"] = ecg["ecg_raw"].to_numpy()
     seconds = len(rec["ecg"]) / rec["fs_ecg"]
     print("ECG:", len(rec["ecg"]), "samples at", rec["fs_ecg"], "per second")
+    notes = data[data["note"].notna()]
+    rec["notes"] = list(zip(notes["time_s"], notes["note"].astype(str)))
+    temp = data[data["temp_c"].notna()]
+    rec["t_temp"] = temp["time_s"].to_numpy()
+    rec["temp_c"] = temp["temp_c"].to_numpy()
 
     adc_range = settings.get("adc_range", "unknown")
     if not adc_range.isdigit():

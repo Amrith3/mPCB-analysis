@@ -10,11 +10,12 @@ py -3.13 -m pip install -r requirements.txt
 py -3.13 ecg_filter_steps.py
 ```
 
-The recordings made since 24 Sep 2026 are in `data/`, one zip per session; unzip one and point
-`FILE` at a CSV in it. The 22 Oct zip holds two mice in separate folders (30 g and 25 g).
+The recordings made since 24 Sep 2026 are in `data/`, one zip per session; a session is unzipped
+there the first time one of its recordings is used. The 22 Oct zip holds two mice in separate
+folders (30 g and 25 g).
 
-The recording to analyse is `FILE` at the top of `recording.py`. Each script prints its numbers,
-shows a figure and saves it as a PNG next to the scripts.
+The recording to analyse is `FILE` at the top of `recording.py` (22 Oct, 14:54:30). Each script
+prints its numbers, shows a figure and saves it as a PNG in the folder it is run from.
 
 | File | What it does |
 |---|---|
@@ -25,6 +26,12 @@ shows a figure and saves it as a PNG next to the scripts.
 | `ppg_vitals.py` | the PPG (IR): raw, after the low-pass, heart band, breathing band; vitals over time |
 | `notch_differences.py` | which mains notches are worth using: each mains frequency tried on its own, the mains and the ECG it removes |
 | `data_loss.py` | samples missing in the recording, and ECG samples clipped |
+| `quality.py` | the signal quality of every recording in `data/` as a table (`quality.csv`): clear beat, mains share, missing samples, clipping, PPG |
+| `hr_agreement.py` | PPG heart rate against ECG heart rate in every recording with a usable PPG: Bland-Altman plot (`hr_agreement.pdf`) |
+| `style.py` | the figure style of the thesis figures (this folder and `isoflurane/`) |
+
+The analysis of the isoflurane doses (how heart rate, breathing, the ECG beat and the pulse change
+with the dose) is in `isoflurane/`; see its README.
 
 ## How the figures are built
 
@@ -80,9 +87,9 @@ the heating pad on AC; `notch_differences.py`):
 | Notch | Mains removed | ECG removed | QRS change |
 |---|---|---|---|
 | 50 Hz | 252 µV RMS | 25 µV RMS | -0.9 % |
-| 100 Hz | 12 µV RMS | 16 µV RMS | -5.0 % |
-| 150 Hz | 70 µV RMS | 18 µV RMS | -2.3 % |
-| 200 Hz | 0.6 µV RMS | 0.8 µV RMS | -0.2 % |
+| 100 Hz | 12 µV RMS | 16 µV RMS | -4.9 % |
+| 150 Hz | 70 µV RMS | 18 µV RMS | -3.0 % |
+| 200 Hz | 0.8 µV RMS | 0.8 µV RMS | -0.2 % |
 | 250 Hz | none (the chip's low-pass removes it) | | |
 
 The 100 Hz notch sits in the middle of the QRS's frequencies and removes more ECG than mains;
@@ -94,7 +101,8 @@ a multiple of 50 Hz reaches; no notch can bring that ECG back.
 
 **R waves.** The R wave is a sharp spike, so most of it sits at 20-90 Hz. In that band, with the
 mains notched out, peaks taller than 0.3 x the typical tall peak are R waves; each mark is then
-moved to the top of the ECG nearby. After each mark the finder waits 0.6 x the typical time
+moved to the R peak of the ECG nearby: the earliest peak at least 0.6 x the tallest there, so a J
+wave taller than R (common under isoflurane) is not taken for it. After each mark the finder waits 0.6 x the typical time
 between beats before it takes the next one, so a tall T wave (about 70 ms after R) is not
 counted as a second beat. The typical time between beats comes from the autocorrelation of the
 band's energy, searched from 80 to 300 ms (750 to 200 beats per minute) so breathing is not
@@ -125,7 +133,8 @@ reliable.
   when each breath has two humps, where counting peaks would count two breaths. The likeness is
   averaged over the part that overlaps, and only its peaks count (at the shortest delays it is
   still falling from delay 0). Shifted by two breaths it looks alike too, so one breath is the
-  shortest delay at least 0.8 times as alike as the best one. A window gets a value only if the
+  shortest delay at least 0.8 times as alike as the best one, read between samples (a parabola
+  through the peak and its two neighbours). A window gets a value only if the
   best peak is at least half as alike as delay 0; otherwise its breathing is not clear (a moving
   animal, or breathing faster than the band's 210 per minute).
 - Perfusion index = the size (peak to peak) of the pulse averaged on the R waves, in % of the
