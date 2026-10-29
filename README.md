@@ -28,7 +28,7 @@ prints its numbers, shows a figure and saves it as a PNG in the folder it is run
 | `data_loss.py` | samples missing in the recording, and ECG samples clipped |
 | `quality.py` | the signal quality of every recording in `data/` as a table (`quality.csv`): clear beat, mains share, missing samples, clipping, PPG |
 | `hr_agreement.py` | PPG heart rate against ECG heart rate in every recording with a usable PPG: Bland-Altman plot (`hr_agreement.pdf`) |
-| `style.py` | the figure style of the thesis figures (this folder and `isoflurane/`) |
+| `style.py` | the style of the figures (this folder and `isoflurane/`) |
 
 The analysis of the isoflurane doses (how heart rate, breathing, the ECG beat and the pulse change
 with the dose) is in `isoflurane/`; see its README.
