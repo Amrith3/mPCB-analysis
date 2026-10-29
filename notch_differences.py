@@ -39,7 +39,8 @@ beat_before = panels.averaged(clean, r, half)
 start = max(t[0], min(10, t[-1] - 0.5))
 show = (t >= start) & (t < start + 0.5)
 n = len(tried)
-plt.figure(figsize=(19, 3.5 * n))
+plt.rcParams["font.size"] = 8
+plt.figure(figsize=(19, 3.5 * n), layout="constrained")
 for i in range(n):
     f0 = tried[i]
     after = filters.notch(clean, fs, f0)
@@ -83,7 +84,9 @@ for i in range(n):
     near = (f >= f0 - 10) & (f <= f0 + 10)
     plt.plot(f[near], p_before[near], color="0.6", label="before")
     plt.plot(f[near], p_after[near], label="after")
-    plt.title("the recording near " + str(f0) + " Hz: " + str(round(np.std(mains), 1)) + " µV RMS of mains")
+    plt.title("near " + str(f0) + " Hz: " + str(round(np.std(mains), 1)) + " µV RMS of mains")
+    plt.xlim(f0 - 10, f0 + 10)
+    plt.locator_params(axis="x", nbins=5)
     plt.xlabel("frequency (Hz)")
     plt.ylabel("dB")
     plt.legend(fontsize=7)
@@ -92,6 +95,5 @@ used = filters.notches(clean, fs)
 beat_used = panels.averaged(used, r, half)
 print("the notches used together", filters.notch_frequencies(fs), "Hz: QRS", round(100 * (qrs(beat_used) / qrs(beat_before) - 1), 1), "%")
 
-plt.tight_layout()
 plt.savefig("notch_differences.png", dpi=150)
 plt.show()

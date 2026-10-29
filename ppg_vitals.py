@@ -112,7 +112,8 @@ averaged_name = ["averaged pulse (on the R waves)", "averaged pulse (on the R wa
                  "averaged pulse (on the R waves)", "averaged breath"]
 
 show = (t >= 10) & (t < 15)
-plt.figure(figsize=(16, 14))
+plt.rcParams["font.size"] = 8
+plt.figure(figsize=(16, 14), layout="constrained")
 for i in range(4):
     name, x, before, answer, centres, half = rows[i]
 
@@ -135,9 +136,9 @@ for i in range(4):
     if average is not None:
         plt.plot(1000 * np.arange(-half, half) / fs, average - np.median(average))
     plt.title(averaged_name[i])
-    plt.xlabel("time from the R wave or breath peak (ms)")
+    plt.xlabel("time from peak (ms)")
 
-plt.subplot(5, 2, 9)
+plt.subplot(5, 4, (17, 18))
 plt.plot(middle, ecg_rate, "k-", label="ECG")
 plt.plot(middle, ppg_rate, "o", label="PPG heart band")
 plt.title("heart rate")
@@ -155,6 +156,5 @@ plt.title("perfusion index (averaged pulse)")
 plt.xlabel("time (s)")
 plt.ylabel("% of the light level")
 
-plt.tight_layout()
 plt.savefig("ppg_vitals.png", dpi=150)
 plt.show()
