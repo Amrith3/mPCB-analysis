@@ -48,8 +48,8 @@ columns follow the build-up from the signal to the filters to the filters acting
 ## The recordings
 
 The ECG chip filters before anything is stored: a digital high-pass at 0.5 Hz and a digital
-low-pass.The low-pass is at 153.6 Hz (the firmware default at 512 samples per
-second, which the GUI also sends; `SET DLPF 0` would switch it off.
+low-pass. The low-pass is at 153.6 Hz (the firmware default at 512 samples per
+second, which the GUI also sends; `SET DLPF 0` would switch it off).
 
 The analysis adds no low-pass of its own: the chip's is the only one. The mouse QRS has real
 content between 100 and 150 Hz, and a second low-pass on top of the chip's would cut it (a 150 Hz
