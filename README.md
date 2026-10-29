@@ -1,6 +1,6 @@
 # mPCB analysis
 
-Simple Python scripts for the ECG and PPG recorded with the mouse sensor board.
+Python scripts for the ECG and PPG recorded with the mouse sensor board.
 Each script runs from top to bottom.
 
 ## Setup and running
@@ -48,11 +48,8 @@ columns follow the build-up from the signal to the filters to the filters acting
 ## The recordings
 
 The ECG chip filters before anything is stored: a digital high-pass at 0.5 Hz and a digital
-low-pass. Since 24 Sep 2026 the low-pass is at 153.6 Hz (the firmware default at 512 samples per
-second, which the GUI also sends; `SET DLPF 0` would switch it off); recordings made before then
-used 102.4 Hz. Since 24 Sep the cut-off is lower at other rates: 40.96 Hz at 256 and 28.35 Hz at
-128 samples per second. The stored ECG (`ecg_uv`) has no notch: the GUI's notches only change
-what it displays.
+low-pass.The low-pass is at 153.6 Hz (the firmware default at 512 samples per
+second, which the GUI also sends; `SET DLPF 0` would switch it off.
 
 The analysis adds no low-pass of its own: the chip's is the only one. The mouse QRS has real
 content between 100 and 150 Hz, and a second low-pass on top of the chip's would cut it (a 150 Hz
