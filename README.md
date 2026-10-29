@@ -10,6 +10,9 @@ py -3.13 -m pip install -r requirements.txt
 py -3.13 ecg_filter_steps.py
 ```
 
+The recordings made since 24 Sep 2026 are in `data/`, one zip per session; unzip one and point
+`FILE` at a CSV in it. The 22 Oct zip holds two mice in separate folders (30 g and 25 g).
+
 The recording to analyse is `FILE` at the top of `recording.py`. Each script prints its numbers,
 shows a figure and saves it as a PNG next to the scripts.
 
