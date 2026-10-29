@@ -13,7 +13,8 @@ levels = filters.ecg_levels(rec["ecg"], fs)
 start = max(t[0], min(10, t[-1] - 2))
 show = (t >= start) & (t < start + 2)
 n = len(levels)
-plt.figure(figsize=(13, 3.3 * n))
+plt.rcParams["font.size"] = 8
+plt.figure(figsize=(13, 3.3 * n), layout="constrained")
 for i in range(n):
     name, x, answer = levels[i]
 
@@ -28,12 +29,11 @@ for i in range(n):
         panels.step1_amplitude(x, fs, "µV")
         for f0 in filters.notch_frequencies(fs, filters.MAINS_HZ):
             plt.axvline(f0, color="tab:red", linewidth=0.8, linestyle=":")
-        plt.title("1. the signal: amplitude (µV); red: mains frequencies")
+        plt.title("1. amplitude (µV); red: mains")
     else:
         panels.step2_gain(answer, fs)
         plt.subplot(n, 3, 3 * i + 3)
         panels.step3_before_after(levels[i - 1][1], x, fs)
 
-plt.tight_layout()
 plt.savefig("ecg_filter_steps.png", dpi=150)
 plt.show()
