@@ -16,7 +16,7 @@ import numpy as np
 from scipy.signal import welch
 
 import filters
-import style
+import panels
 from recording import DATA, load, unzip
 
 for z in glob.glob(os.path.join(DATA, "*.zip")):
@@ -67,49 +67,49 @@ print("pieces within 5 %%: bias %.1f, limits %.1f to %.1f beats/min" % (
     np.mean(diff[good]), np.mean(diff[good]) - 1.96 * np.std(diff[good], ddof=1),
     np.mean(diff[good]) + 1.96 * np.std(diff[good], ddof=1)))
 
-style.thesis()
+panels.figure_style()
 fig = plt.figure(figsize=(6.3, 5.4), layout="constrained")
 top, bottom = fig.subfigures(2, 1, height_ratios=[1, 1.15])
 ax = top.subplots()
 piece = np.arange(1, len(ecg_hr) + 1)
-ax.plot(piece, ecg_hr, "o-", color=style.BLUE, markersize=2.5, linewidth=0.8, label="ECG")
-ax.plot(piece, ppg_hr, "o", color=style.ORANGE, markersize=2.5, markeredgewidth=0, label="PPG")
+ax.plot(piece, ecg_hr, "o-", color=panels.BLUE, markersize=2.5, linewidth=0.8, label="ECG")
+ax.plot(piece, ppg_hr, "o", color=panels.ORANGE, markersize=2.5, markeredgewidth=0, label="PPG")
 starts = [0] + [i for i in range(1, len(session)) if session[i] != session[i - 1]]
 for k, s in enumerate(starts):
     end = starts[k + 1] if k + 1 < len(starts) else len(session)
     if s:
-        ax.axvline(s + 0.5, color=style.AXIS, linewidth=0.5, zorder=0)
+        ax.axvline(s + 0.5, color=panels.AXIS, linewidth=0.5, zorder=0)
     ax.text((s + end) / 2 + 0.5, 1.02, session[s], transform=ax.get_xaxis_transform(), ha="center",
-            fontsize=7, color=style.INK_2)
+            fontsize=7, color=panels.INK_2)
 ax.set_xlim(0.5, len(piece) + 0.5)
 ax.set_xlabel("30 s piece, in time order")
 ax.set_ylabel("Heart rate (beats/min)")
 ax.legend(loc="lower left", ncol=2)
-style.letter(ax, "A")
+panels.letter(ax, "A")
 
 axes = bottom.subplots(1, 2)
 ax = axes[0]
-ax.plot(ecg_hr, ppg_hr, "o", color=style.INK_2, markersize=3, alpha=0.5, markeredgewidth=0)
+ax.plot(ecg_hr, ppg_hr, "o", color=panels.INK_2, markersize=3, alpha=0.5, markeredgewidth=0)
 low, high = 200, 650
-ax.plot([low, high], [low, high], color=style.AXIS, linewidth=0.8, zorder=0)
+ax.plot([low, high], [low, high], color=panels.AXIS, linewidth=0.8, zorder=0)
 ax.set_xlim(low, high)
 ax.set_ylim(low, high)
 ax.set_aspect("equal")
 ax.set_xlabel("ECG heart rate (beats/min)")
 ax.set_ylabel("PPG heart rate (beats/min)")
-style.letter(ax, "B")
+panels.letter(ax, "B")
 
 ax = axes[1]
-ax.plot(mean, diff, "o", color=style.INK_2, markersize=3, alpha=0.5, markeredgewidth=0)
+ax.plot(mean, diff, "o", color=panels.INK_2, markersize=3, alpha=0.5, markeredgewidth=0)
 for y, text in [(bias, "bias %.1f" % bias), (bias + 1.96 * sd, "+1.96 SD %.0f" % (bias + 1.96 * sd)),
                 (bias - 1.96 * sd, "−1.96 SD %.0f" % (bias - 1.96 * sd))]:
-    ax.axhline(y, color=style.INK_2, linewidth=0.8, linestyle="-" if text.startswith("bias") else "--")
-    ax.text(1.0, y, " " + text, transform=ax.get_yaxis_transform(), va="center", fontsize=6.5, color=style.INK_2)
+    ax.axhline(y, color=panels.INK_2, linewidth=0.8, linestyle="-" if text.startswith("bias") else "--")
+    ax.text(1.0, y, " " + text, transform=ax.get_yaxis_transform(), va="center", fontsize=6.5, color=panels.INK_2)
 ax.set_title("%.0f %% of %d pieces within 5 %% of the ECG" % (100 * within, len(diff)), loc="left",
-             fontsize=7, color=style.INK_2)
+             fontsize=7, color=panels.INK_2)
 ax.set_xlabel("Mean of ECG and PPG (beats/min)")
 ax.set_ylabel("PPG − ECG (beats/min)")
-style.letter(ax, "C")
+panels.letter(ax, "C")
 
-style.save(fig, __file__, "hr_agreement")
+panels.save(fig, __file__, "hr_agreement")
 plt.show()

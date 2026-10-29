@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import sessions
-import style
+import panels  # after sessions, which puts the main folder on the path
 
 SESSION = "26 Oct, 30 g"
 
@@ -20,7 +20,7 @@ for level, start, end in stretches:
         line += "  %s -" % key if s is None else "  %s %.3g (%.3g-%.3g) %s" % (key, *s, unit)
     print(line)
 
-style.thesis()
+panels.figure_style()
 rows = [("hr", "Heart rate\n(beats/min)"),
         ("breathing", "Breathing rate\n(breaths/min)"),
         ("pi", "Perfusion index\n(%)"),
@@ -31,34 +31,34 @@ fig, axes = plt.subplots(len(rows) + 1, 1, figsize=(6.3, 7.2), sharex=True, layo
 ax = axes[0]
 when = [c[0] / 60 for c in v["changes"]] + [v["end"] / 60]
 level = [c[1] for c in v["changes"]]
-ax.stairs(level, when, color=style.INK, linewidth=1.2, baseline=None)
-ax.stairs(level, when, color=style.HAIRLINE, fill=True, alpha=0.6)
+ax.stairs(level, when, color=panels.INK, linewidth=1.2, baseline=None)
+ax.stairs(level, when, color=panels.HAIRLINE, fill=True, alpha=0.6)
 for lvl, start, end in stretches:
-    ax.text((start + end) / 120, lvl, "%g %%" % lvl, ha="center", va="bottom", color=style.INK_2)
+    ax.text((start + end) / 120, lvl, "%g %%" % lvl, ha="center", va="bottom", color=panels.INK_2)
 ax.set_ylabel("Isoflurane\n(%)")
 ax.set_ylim(0, np.nanmax(level) * 1.35)
 ax.set_yticks(sorted(set(lvl for lvl in level if not np.isnan(lvl))))
 ax.grid(False)
-style.letter(ax, "A")
+panels.letter(ax, "A")
 
 for i, (key, label) in enumerate(rows):
     ax = axes[i + 1]
     t, y = sessions.with_gaps(v, key)
     if len(y):
-        ax.plot(t, y, color=style.BLUE)
+        ax.plot(t, y, color=panels.BLUE)
         alone = np.isnan(np.r_[np.nan, y[:-1]]) & np.isnan(np.r_[y[1:], np.nan])
-        ax.plot(t[alone], y[alone], "o", color=style.BLUE, markersize=2, markeredgewidth=0)
+        ax.plot(t[alone], y[alone], "o", color=panels.BLUE, markersize=2, markeredgewidth=0)
     else:
-        ax.text(0.5, 0.5, "no values (no usable PPG)", transform=ax.transAxes, ha="center", color=style.INK_2)
+        ax.text(0.5, 0.5, "no values (no usable PPG)", transform=ax.transAxes, ha="center", color=panels.INK_2)
     ax.set_ylabel(label)
-    style.letter(ax, "BCDE"[i])
+    panels.letter(ax, "BCDE"[i])
 
 for ax in axes:
     for lvl, start, end in stretches[1:]:
-        ax.axvline(start / 60, color=style.AXIS, linewidth=0.5, zorder=0)
+        ax.axvline(start / 60, color=panels.AXIS, linewidth=0.5, zorder=0)
 axes[-1].set_xlabel("Time (min)")
 axes[-1].set_xlim(0, v["end"] / 60)
 fig.align_ylabels(axes)
 
-style.save(fig, __file__, "timeline")
+panels.save(fig, __file__, "timeline")
 plt.show()

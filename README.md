@@ -21,14 +21,13 @@ prints its numbers, shows a figure and saves it as a PNG in the folder it is run
 |---|---|
 | `recording.py` | reads a recording: ECG in µV, PPG in nA, the sampling rates; puts the PPG on the ECG's clock |
 | `filters.py` | every filter and its setting, the ECG filtering levels, the mains fit, the filter gain, the R-wave finder |
-| `panels.py` | the panels both figures draw: the three steps and the averaged beat |
+| `panels.py` | the panels both figures draw: the three steps and the averaged beat; and the style of the figures of `hr_agreement.py` and `isoflurane/` |
 | `ecg_filter_steps.py` | the ECG level by level: raw, + high-pass, + 50 Hz notch, + 150 Hz notch |
 | `ppg_vitals.py` | the PPG (IR): raw, after the low-pass, heart band, breathing band; vitals over time |
 | `notch_differences.py` | which mains notches are worth using: each mains frequency tried on its own, the mains and the ECG it removes |
 | `data_loss.py` | samples missing in the recording, and ECG samples clipped |
 | `quality.py` | the signal quality of every recording in `data/` as a table (`quality.csv`): clear beat, mains share, missing samples, clipping, PPG |
 | `hr_agreement.py` | PPG heart rate against ECG heart rate in every recording with a usable PPG: Bland-Altman plot (`hr_agreement.pdf`) |
-| `style.py` | the style of the figures (this folder and `isoflurane/`) |
 
 The analysis of the isoflurane doses (how heart rate, breathing, the ECG beat and the pulse change
 with the dose) is in `isoflurane/`; see its README.
