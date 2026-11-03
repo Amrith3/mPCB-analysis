@@ -10,7 +10,9 @@ agree within 2 ms; otherwise it is "-" (the wave is too small for the noise). Th
 then falls at the same point of every beat and does not average away. Left out: QT (the end of the
 T wave is not reliable here) and QRSp (the J wave does not come back to the baseline).
 snr_hrv.csv: signal-to-noise ratio of the ECG and of the PPG heart band, SDNN and RMSSD, each as
-median (IQR) of the 10 s steps in the same 2 min (each from the 30 s around it; sessions.vitals).
+median (IQR) of the 10 s steps in the same 2 min (each from the 30 s around it; sessions.vitals),
+and the floor of SDNN and RMSSD: what a perfectly regular heart would read with that ECG's noise
+(sessions.hrv_floor). SDNN or RMSSD close to its floor is mostly measurement noise.
 table.csv: all of it, with the number of beats, the perfusion index in % of the light level, the
 coefficient of variation (CV = 100 x SD / mean; not for temperature, as °C has no true zero) and
 the wave sizes.
@@ -91,6 +93,9 @@ for name, label in RUNS:
             row[title] = "%.1f" % p if repeats and "ms" in title else "%.0f" % p if repeats else "-"
         for key, title, fmt in SIGNAL:
             row[title] = median_iqr(d["v"], key, c["start"], c["end"], fmt)
+        floor = sessions.hrv_floor(c)
+        row["SDNN floor (ms)"] = "%.2f" % floor[0] if np.isfinite(floor[0]) else "-"
+        row["RMSSD floor (ms)"] = "%.2f" % floor[1] if np.isfinite(floor[1]) else "-"
         rows.append(row)
         run = label if len(levels) == 1 else ""
         vitals.append({"Run": run, "Isoflurane (%)": dose,
@@ -101,7 +106,8 @@ for name, label in RUNS:
         ecg.append({"Run": run, "Isoflurane (%)": dose,
                     **{k: row[k] for k in ["RR (ms)", "PQ (ms)", "P duration (ms)", "QRS (ms)"]}})
 
-        signal.append({"Run": run, "Isoflurane (%)": dose, **{title: row[title] for _, title, _ in SIGNAL}})
+        signal.append({"Run": run, "Isoflurane (%)": dose, **{title: row[title] for _, title, _ in SIGNAL},
+                       **{k: row[k] for k in ["SDNN floor (ms)", "RMSSD floor (ms)"]}})
 
 write(vitals, "vitals.csv")
 write(ecg, "ecg.csv")

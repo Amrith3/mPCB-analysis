@@ -5,6 +5,7 @@ Recordings where the ECG's beat repeats clearly in fewer than half the 30 s piec
 (the ECG is the reference). One value pair per 30 s piece in which the beat repeats clearly:
 ECG: 60 / median R-R. PPG: the strongest frequency in the heart band (Welch), as in ppg_vitals.py.
 Bias = mean of PPG - ECG; limits of agreement = bias ± 1.96 SD.
+It also prints how often the PPG heart rate is within 5 % of the ECG's at each PPG SNR (filters.snr_db).
 """
 import contextlib
 import glob
@@ -24,7 +25,7 @@ from recording import DATA, load, unzip
 for z in glob.glob(os.path.join(DATA, "*.zip")):
     unzip(os.path.basename(z)[:-4])
 
-ecg_hr, ppg_hr, session = [], [], []
+ecg_hr, ppg_hr, ppg_snr, session = [], [], [], []
 print("recording: pieces with a clear beat, PPG within 5 % of ECG")
 for f in sorted(glob.glob(os.path.join(DATA, "*", "**", "*.csv"), recursive=True), key=os.path.basename):
     when = datetime.strptime(re.search(r"\d{8}_\d{6}", os.path.basename(f)).group(), "%Y%m%d_%H%M%S")
@@ -38,6 +39,7 @@ for f in sorted(glob.glob(os.path.join(DATA, "*", "**", "*.csv"), recursive=True
     if "ir_nA" not in rec or sum(c for _, _, c in pieces) < len(pieces) / 2:
         continue                                         # no PPG, or the ECG reference is unclear in most of it
     r_times = rec["t_ecg"][r]
+    r_t = filters.r_times(rec["ecg"], rec["t_ecg"], rec["fs_ecg"], r)
     fp, tp = rec["fs_ppg"], rec["t_ppg"]
     heart = filters.heart_band(filters.ppg_lowpass(rec["ir_nA"], fp), fp)
     pairs = []
@@ -50,15 +52,17 @@ for f in sorted(glob.glob(os.path.join(DATA, "*", "**", "*.csv"), recursive=True
             continue
         fr, p = welch(heart[near], fs=fp, nperseg=int(10 * fp), nfft=int(60 * fp))
         band = (fr >= filters.HEART_HZ[0]) & (fr <= filters.HEART_HZ[1])
-        pairs.append((60 / np.median(rr), 60 * fr[band][np.argmax(p[band])]))
+        snr = filters.snr_db(tp, heart, r_t[(r_t >= t0) & (r_t < t1)], np.median(rr))
+        pairs.append((60 / np.median(rr), 60 * fr[band][np.argmax(p[band])], snr))
     if pairs:
-        e, q = np.array(pairs).T
+        e, q, n = np.array(pairs).T
         ecg_hr.extend(e)
         ppg_hr.extend(q)
+        ppg_snr.extend(n)
         session.extend([label] * len(e))
         print("  %s: %d, %d" % (os.path.basename(f), len(pairs), np.sum(np.abs(q / e - 1) <= 0.05)))
 
-ecg_hr, ppg_hr = np.array(ecg_hr), np.array(ppg_hr)
+ecg_hr, ppg_hr, ppg_snr = np.array(ecg_hr), np.array(ppg_hr), np.array(ppg_snr)
 mean = (ecg_hr + ppg_hr) / 2
 diff = ppg_hr - ecg_hr
 bias, sd = np.mean(diff), np.std(diff, ddof=1)
@@ -69,6 +73,12 @@ good = np.abs(diff / ecg_hr) <= 0.05
 print("pieces within 5 %%: bias %.1f, limits %.1f to %.1f beats/min" % (
     np.mean(diff[good]), np.mean(diff[good]) - 1.96 * np.std(diff[good], ddof=1),
     np.mean(diff[good]) + 1.96 * np.std(diff[good], ddof=1)))
+
+right = np.abs(ppg_hr / ecg_hr - 1) <= 0.05
+for lo, hi in [(-40, -5), (-5, 0), (0, 5), (5, 10), (10, 40)]:
+    sel = (ppg_snr >= lo) & (ppg_snr < hi)
+    if sel.any():
+        print("PPG SNR %d to %d dB: %d pieces, PPG within 5 %% of ECG in %d" % (lo, hi, sel.sum(), right[sel].sum()))
 
 panels.figure_style()
 fig = plt.figure(figsize=(6.3, 5.4), layout="constrained")

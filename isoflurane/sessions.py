@@ -109,7 +109,7 @@ def vitals(name):
             beat_t = r_t[matched & (r_t >= middle - WINDOW_S / 2) & (r_t < middle + WINDOW_S / 2)]
             period = np.median(np.diff(beat_t)) if len(beat_t) >= 10 else np.nan
             if whole and len(beat_t) >= 10:
-                v["ecg_snr"].append(filters.snr_db(used, np.searchsorted(t, beat_t), int(period * fs)))
+                v["ecg_snr"].append(filters.snr_db(t, used, beat_t, period))
                 sdnn, rmssd = filters.hrv(np.diff(beat_t), fs)
             else:
                 v["ecg_snr"].append(np.nan)
@@ -130,8 +130,7 @@ def vitals(name):
             in_window = (r_times >= middle - WINDOW_S / 2) & (r_times < middle + WINDOW_S / 2)
             pulse = panels.averaged(heart, pulses[in_window], int(0.15 * fp))
             v["pi"].append(np.nan if pulse is None else 100 * np.ptp(pulse) / np.mean(ppg[near]))
-            v["ppg_snr"].append(filters.snr_db(heart, np.searchsorted(tp, beat_t), int(period * fp))
-                                if len(beat_t) >= 10 else np.nan)
+            v["ppg_snr"].append(filters.snr_db(tp, heart, beat_t, period) if len(beat_t) >= 10 else np.nan)
 
     v = {k: np.array(x) for k, x in v.items()}
     # ECG noise or mains far above the session's usual (movement, heating pad) -> no heart rate there
@@ -213,6 +212,7 @@ def dose_averages(name, ecg_ms=(-100, 60), ppg_ms=(-50, 150), shift_ms=12):
     The odd and the even beats are also averaged on their own, to check a measurement is repeatable.
     PPG pulse: the heart band in % of the light level, read every 2 ms with the same shift.
     Breathing: the PPG breathing band in % of the light level.
+    Also the raw ECG of those 2 min (time, µV, sampling rate), for the HRV floor.
     """
     v = vitals(name)
     stretches = epochs(v)
@@ -222,6 +222,7 @@ def dose_averages(name, ecg_ms=(-100, 60), ppg_ms=(-50, 150), shift_ms=12):
     t_ppg = np.arange(ppg_ms[0], ppg_ms[1], 2)
     pieces = [[] for _ in stretches]                         # (ECG piece with room to shift, R time, file)
     rr = [[] for _ in stretches]
+    raw = [None for _ in stretches]                          # (time, ECG, fs) of the last 2 min
     ppg = []                                                 # per file: heart band and light level, read at any time
     out = {"v": v, "t_ppg": t_ppg, "t_breath": [], "breath": [], "t_temp": [], "temp": [], "doses": []}
     for f in files(name):
@@ -242,6 +243,10 @@ def dose_averages(name, ecg_ms=(-100, 60), ppg_ms=(-50, 150), shift_ms=12):
         out["breath"].append(100 * filters.breathing_band(light, rec["fs_ppg"]) / np.mean(light))
         out["t_temp"].append(offset + rec["t_temp"])
         out["temp"].append(rec["temp_c"])
+        for i, w in enumerate(wins):
+            inside = (rec["t_ecg"] >= w[0] - offset - STEP_S / 2) & (rec["t_ecg"] < w[-1] - offset + STEP_S / 2) if len(w) else []
+            if np.sum(inside) > (len(raw[i][0]) if raw[i] else 0):
+                raw[i] = (rec["t_ecg"][inside], rec["ecg"][inside], fs)
         for j in range(len(r) - 1):
             k = r[j]
             when = offset + rec["t_ecg"][k]
@@ -271,7 +276,8 @@ def dose_averages(name, ecg_ms=(-100, 60), ppg_ms=(-50, 150), shift_ms=12):
             out["doses"].append({"level": level, "start": start, "end": end, "last": last[i],
                                  "beats": len(beats), "rr_ms": 1000 * np.median(rr[i]),
                                  "beat": np.median(beats, axis=0), "pulse": np.median(pulses, axis=0),
-                                 "halves": (np.median(beats[0::2], axis=0), np.median(beats[1::2], axis=0))})
+                                 "halves": (np.median(beats[0::2], axis=0), np.median(beats[1::2], axis=0)),
+                                 "raw": raw[i]})
     return out
 
 
@@ -320,3 +326,11 @@ def ecg_points(t_ms, beat, k=0.15):
     return {"base": base, "P on": t[p_on], "P off": t[p_off], "QRS on": t[on],
             "QRS off": (t[s] + t[j]) / 2, "QRSp off": t[back[0]] if len(back) else np.nan,
             "P": (t[p], y[p] - base), "R": (t[r], y[r] - base), "S": (t[s], y[s] - base), "J": (t[j], y[j] - base)}
+
+
+def hrv_floor(c):
+    """SDNN and RMSSD (ms) a perfectly regular heart would read in one dose's last 2 min of ECG."""
+    t, ecg, fs = c["raw"]
+    with contextlib.redirect_stdout(io.StringIO()):
+        r = filters.r_waves(ecg, fs)
+    return filters.hrv_floor(ecg, t, fs, filters.r_times(ecg, t, fs, r))

@@ -4,7 +4,11 @@ heart-rate variability.
 All filters are zero-phase (forwards and backwards), so -6 dB at a cut-off.
 The chip already applies a 0.5 Hz high-pass and a 153.6 Hz low-pass (102.4 Hz before 24 Sep 2026).
 """
+import contextlib
+import io
+
 import numpy as np
+from scipy.interpolate import CubicSpline
 from scipy.signal import butter, correlate, filtfilt, find_peaks, iirnotch, sosfiltfilt
 
 ECG_HP_HZ = 3
@@ -244,17 +248,49 @@ def hrv(rr, fs):
     return 1000 * np.std(rr[normal], ddof=1), 1000 * np.sqrt(np.mean(np.diff(rr)[both] ** 2))
 
 
-def snr_db(x, centres, period):
+def snr_db(t, x, times, period):
     """Signal-to-noise ratio (dB) of a signal that repeats with every beat. One beat interval
-    (period, in samples) around each centre; the average of those is the signal, what each beat
-    differs from it is the noise. The average still holds 1/n of the noise of n beats, which is
-    taken off. nan with fewer than 10 beats or no signal left."""
-    half = period // 2
-    beats = np.array([x[c - half:c + half] for c in centres if c - half >= 0 and c + half <= len(x)])
-    n = len(beats)
+    (period, s) around each beat time (s), read between samples (cubic spline), so every beat is
+    lined up on its own time; the average of those is the signal, what each beat differs from it
+    is the noise. The average still holds 1/n of the noise of n beats, which is taken off. nan with
+    fewer than 10 beats or no signal left."""
+    step = np.median(np.diff(t))
+    offsets = np.arange(-period / 2, period / 2, step)
+    times = np.sort(times[(times + offsets[0] >= t[0]) & (times + offsets[-1] <= t[-1])])
+    n = len(times)
     if n < 10:
         return np.nan
+    part = slice(max(np.searchsorted(t, times[0] + offsets[0]) - 3, 0), np.searchsorted(t, times[-1] + offsets[-1]) + 4)
+    beats = CubicSpline(t[part], x[part])(times[:, None] + offsets)
     average = np.mean(beats, axis=0)
     noise = np.mean((beats - average) ** 2) * n / (n - 1)
     signal = np.var(average) - noise / n
     return 10 * np.log10(signal / noise) if signal > 0 else np.nan
+
+
+def hrv_floor(ecg, t, fs, r_t):
+    """SDNN and RMSSD (ms) that a perfectly regular heart would read with this ECG's noise: the
+    averaged beat is taken out at every R time and put back at regular times, and the R waves are
+    found again. Values close to it are mostly measurement noise. nan with fewer than 20 beats."""
+    r_t = np.sort(r_t[~np.isnan(r_t)])
+    if len(r_t) < 20:
+        return np.nan, np.nan
+    period = np.median(np.diff(r_t))
+    offsets = np.arange(-0.45 * period, 0.55 * period, 1 / fs)
+    r_t = r_t[(r_t + offsets[0] > t[0]) & (r_t + offsets[-1] < t[-1])]
+    average = np.median(CubicSpline(t, ecg)(r_t[:, None] + offsets), axis=0)
+    average = average - np.linspace(average[0], average[-1], len(average))
+    edge = np.clip(np.minimum(offsets - offsets[0], offsets[-1] - offsets) / 0.005, 0, 1)
+    shape = CubicSpline(offsets, average * 0.5 * (1 - np.cos(np.pi * edge)))
+
+    def beats(times):
+        out = np.zeros(len(t))
+        for c in times:
+            k = slice(np.searchsorted(t, c + offsets[0]), np.searchsorted(t, c + offsets[-1]))
+            out[k] += shape(t[k] - c)
+        return out
+
+    made = ecg - beats(r_t) + beats(np.arange(r_t[0], r_t[-1], period))
+    with contextlib.redirect_stdout(io.StringIO()):
+        found = r_times(made, t, fs, r_waves(made, fs))
+    return hrv(np.diff(found[~np.isnan(found)]), fs)

@@ -15,7 +15,7 @@ py -3.13 isoflurane/table.py
 | `sessions.py` | each session's recordings on one clock, the dose from the notes, the vitals every 10 s, the averaged beat at each dose and its wave boundaries |
 | `timeline.py` | one session over time: dose, heart rate, breathing rate, perfusion index, skin temperature (`timeline.pdf`) |
 | `doses.py` | one column per dose: the averaged ECG beat, the averaged PPG pulse, 20 s of breathing, skin temperature (`doses.pdf`) |
-| `table.py` | per dose of each run: the vitals as mean ± SD (`vitals.csv`), the intervals of the averaged beat (`ecg.csv`), the signal-to-noise ratios and heart-rate variability as median (IQR) (`snr_hrv.csv`), and all of it with the CV and the wave sizes (`table.csv`) |
+| `table.py` | per dose of each run: the vitals as mean ± SD (`vitals.csv`), the intervals of the averaged beat (`ecg.csv`), the signal-to-noise ratios and heart-rate variability as median (IQR), with the floor of the heart-rate variability (`snr_hrv.csv`), and all of it with the CV and the wave sizes (`table.csv`) |
 
 Change `SESSION` at the top of `timeline.py` or `doses.py` for another session.
 
@@ -36,7 +36,9 @@ Change `SESSION` at the top of `timeline.py` or `doses.py` for another session.
   was often still changing at the end, so these are values after about 5 min, not a steady state.
   In the tables, ± is the SD of the 10 s values over those 2 min, within one animal, as the
   literature reports vitals (Constantinides et al. 2011, Tsukamoto et al. 2015); the SNR and HRV
-  are given as median (IQR) of the same values, since a few noisy windows skew them. The
+  are given as median (IQR) of the same values, since a few noisy windows skew them; next to the
+  HRV, its floor: what a perfectly regular heart would read with the noise of those 2 min (main
+  README). The
   perfusion index in `vitals.csv` is in % of the run's 1 % value: its size depends on how firmly
   the sensor sits, so only its change within a run is compared.
 - **Averaged beat**: the ECG with the mains fitted out (a notch rings after the QRS), the beats
@@ -59,8 +61,9 @@ Change `SESSION` at the top of `timeline.py` or `doses.py` for another session.
 - Breathing rate agrees with the strongest frequency of the breathing band (Welch) within 10 % in
   89-97 % of the windows.
 - On made-up signals with a known answer (`checks.py` in the main folder): the wave boundaries
-  within 0.3 ms of the true edges; the SNR within 0.1 dB at 3, -7 and -17 dB; the R times within
-  0.1 ms, also with 40 % of the marks on the J wave.
+  within 0.3 ms of the true edges; the SNR within 0.1 dB at 3, -7 and -17 dB, also for sharp beats
+  between samples; the R times within 0.1 ms, also with 40 % of the marks on the J wave; with a
+  real recording's noise, 99.9 % of the beats found at 13 dB and 95 % at 4 dB.
 
 ## Sources
 

@@ -32,7 +32,7 @@ from this folder, where the files land.
 | `notch_differences.py` | which mains notches are worth using: each mains frequency tried on its own, the mains and the ECG it removes |
 | `data_loss.py` | samples missing in the recording, and ECG samples clipped |
 | `quality.py` | the signal quality of every recording in `data/` as a table (`quality.csv`): clear beat, mains share, missing samples, clipping, PPG, signal-to-noise ratio of the ECG and the PPG, heart-rate variability |
-| `checks.py` | the methods on made-up signals with a known answer: SNR, HRV, R waves and R times, mains fit, breathing rate, wave boundaries, dose notes |
+| `checks.py` | the methods on made-up signals with a known answer: SNR, HRV and its floor, R waves and R times, mains fit, breathing rate, wave boundaries, dose notes; and a real recording's beat on its own noise, made larger |
 | `hr_agreement.py` | PPG heart rate against ECG heart rate in every recording with a usable PPG: Bland-Altman plot (`hr_agreement.pdf`) |
 
 The analysis of the isoflurane doses (how heart rate, breathing, the ECG beat and the pulse change
@@ -148,13 +148,22 @@ reliable.
 
 **Signal-to-noise ratio (SNR).** What repeats with every heartbeat is the signal, the rest is
 noise. The ECG (after the high-pass and the notches) and the PPG heart band are cut into pieces
-one beat interval long, centred on the R waves; their average is the signal, and what each beat
-differs from the average is the noise. SNR = 10 x log10(signal power / noise power), in dB: 0 dB is
+one beat interval long, centred on the R waves and read between samples (a cubic spline), so each
+beat is lined up on its own R time; lined up only to the nearest sample (1.95 ms apart), part of the
+3 ms wide R wave would count as noise and the SNR would read too low (by 1.5-6.6 dB here). Their average is the
+signal, and what each beat differs from the average is the noise. SNR = 10 x log10(signal power / noise power), in dB: 0 dB is
 as much noise as signal, 10 dB a tenth of it, 20 dB a hundredth. The average still holds 1/n of the
 noise of its n beats, which is taken off its power. It is the idea of the PPG SNR in Serri
 Mazandarani (2025): the power at the heart rate and its harmonics against the rest, here following
 each beat's own timing. Changes of the beat itself from beat to beat (breathing changes the size of
-the pulse) count as noise too.
+the pulse) count as noise too. The ECG chip's own noise (0.82 µV RMS, 0.05-150 Hz; MAX30003
+datasheet p. 3) would allow 35-45 dB; the recordings since 20 Oct reach 6-15 dB (8 Oct and the
+heating pad on AC below 0 dB), the rest is noise from the electrodes and movement. Papers often give instead the QRS peak
+to peak against the noise between beats, which reads about 20 dB higher. What is enough (`checks.py`, real noise made
+larger; `hr_agreement.py`): at 13 dB 99.9 % of the beats are found, at 7 dB 97 % (and 3.5 % extra,
+which the R-R rules drop), at 4 dB 95 %; the heart rate stays right at all three. The PPG heart rate
+is right (within 5 % of the ECG's) in 117 of 118 pieces with a PPG SNR above -5 dB, and in 51 of 88
+below.
 
 **Heart-rate variability (HRV).** From the R-R intervals of 30 s. A mouse's beat-to-beat changes are
 smaller than the 2 ms between samples, so each R time is found between samples: each beat's QRS is
@@ -168,6 +177,11 @@ intervals, RMSSD the root mean square of the differences between successive ones
 of the variability, a heart rate drifting within the 30 s too; RMSSD holds the beat-to-beat part.
 Both are smaller over shorter stretches and at faster heart rates, so only values over stretches
 of the same length are compared, and part of a change with the dose is the change of heart rate.
+Noise moves the R times a little, so even a perfectly regular heart reads some SDNN and RMSSD:
+`filters.hrv_floor` takes the averaged beat out at every R time, puts it back at regular times and
+finds the R waves again. In these recordings the floor is RMSSD 0.11-0.39 ms and SDNN 0.07-0.22 ms
+(`isoflurane/snr_hrv.csv`; 0.04 ms without noise); a value close to its floor is mostly
+measurement noise.
 `quality.py` gives the SNR and HRV of each recording as the median (IQR) of its 30 s pieces with a
 clear beat; a recording through several doses mixes them, so per dose they are in `isoflurane/`.
 
@@ -207,7 +221,9 @@ appears above 50 Hz (one sample lost in 91 moves it to 50.56 Hz); the lost share
 - Serri Mazandarani M (2025) Photoplethysmography systems for vital signs monitoring in humans and
   small animal models, thesis, Université Laval, pp. 70 and 73: PPG low-pass 32 Hz (used there on
   human finger PPG; no mouse value is given); pp. 67-68: PPG SNR as the power at the pulse rate and
-  its first two harmonics against the noise floor; p. 89: a clear PPG from the mouse thorax has an
-  SNR above 10 dB.
+  its first two harmonics against the noise floor; p. 24: 28.5 dB needed for a heart rate within
+  1 per minute, 39 dB for SpO2 within 2 %; p. 89: a clear PPG from the mouse thorax has an SNR above
+  10 dB.
+- Analog Devices, MAX30003 datasheet, p. 3: input-referred noise 0.82 µV RMS (0.05-150 Hz).
 - Shaffer F, Ginsberg JP (2017) Front Public Health 5:258: SDNN and RMSSD (pp. 2 and 4); a faster
   heart rate lowers the HRV (p. 8); shorter recordings give smaller values (p. 13).

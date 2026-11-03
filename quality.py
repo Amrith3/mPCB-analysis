@@ -59,10 +59,9 @@ for f in sorted(glob.glob(os.path.join(DATA, "*", "**", "*.csv"), recursive=True
         if not clear or np.sum(inside) < 10:
             continue
         rr = np.diff(r_t[inside])
-        snr_ecg.append(filters.snr_db(used, np.searchsorted(rec["t_ecg"], r_t[inside]), int(np.median(rr) * fs)))
+        snr_ecg.append(filters.snr_db(rec["t_ecg"], used, r_t[inside], np.median(rr)))
         if "ir_nA" in rec:
-            pulses = np.searchsorted(rec["t_ppg"], r_t[inside])
-            snr_ppg.append(filters.snr_db(heart, pulses, int(np.median(rr) * fp)))
+            snr_ppg.append(filters.snr_db(rec["t_ppg"], heart, r_t[inside], np.median(rr)))
         hrv = filters.hrv(rr, fs)
         sdnn.append(hrv[0])
         rmssd.append(hrv[1])
