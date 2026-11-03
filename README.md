@@ -1,9 +1,6 @@
 # mPCB analysis
 
 Python scripts for the ECG and PPG recorded with the mouse sensor board.
-Each script runs from top to bottom.
-
-## Setup and running
 
 ```
 py -3.13 -m pip install -r requirements.txt
@@ -11,220 +8,132 @@ py -3.13 checks.py
 py -3.13 ecg_filter_steps.py
 ```
 
-`requirements.txt` gives the versions the results were made with (Python 3.13). `checks.py` tries
-the methods on made-up signals whose answer is known; it ends with "all checks passed".
+`requirements.txt` holds the versions the results were made with. `checks.py` tries the methods on
+made-up signals with a known answer and ends with "all checks passed". The recordings since 24 Sep
+2026 are in `data/`, one zip per session, unzipped on first use (22 Oct holds two mice: 30 g and
+25 g). Run the scripts from this folder; figures (PNG, PDF) and tables (CSV) are saved here.
 
-The recordings made since 24 Sep 2026 are in `data/`, one zip per session; a session is unzipped
-there the first time one of its recordings is used. The 22 Oct zip holds two mice in separate
-folders (30 g and 25 g).
+## Files
 
-The recording to analyse is `FILE` at the top of `recording.py` (22 Oct, 14:54:30). Each script
-prints its numbers and saves its figure (PNG; `hr_agreement.py` also PDF) or table (CSV); run them
-from this folder, where the files land.
-
-| File | What it does |
-|---|---|
-| `recording.py` | reads a recording: ECG in µV, PPG in nA, the sampling rates; puts the PPG on the ECG's clock |
-| `filters.py` | every filter and its setting, the ECG filtering levels, the mains fit, the filter gain, the R-wave finder, the signal-to-noise ratio, the heart-rate variability |
-| `panels.py` | the panels both figures draw: the three steps and the averaged beat; and the style of the figures of `hr_agreement.py` and `isoflurane/` |
-| `ecg_filter_steps.py` | the ECG level by level: raw, + high-pass, + 50 Hz notch, + 150 Hz notch |
-| `ppg_vitals.py` | the PPG (IR): raw, after the low-pass, heart band, breathing band; vitals over time |
-| `notch_differences.py` | which mains notches are worth using: each mains frequency tried on its own, the mains and the ECG it removes |
-| `data_loss.py` | samples missing in the recording, and ECG samples clipped |
-| `quality.py` | the signal quality of every recording in `data/` as a table (`quality.csv`): clear beat, mains share, missing samples, clipping, PPG, signal-to-noise ratio of the ECG and the PPG, heart-rate variability |
-| `checks.py` | the methods on made-up signals with a known answer: SNR, HRV and its floor, R waves and R times, mains fit, breathing rate, wave boundaries, dose notes; and a real recording's beat on its own noise, made larger |
-| `hr_agreement.py` | PPG heart rate against ECG heart rate in every recording with a usable PPG: Bland-Altman plot (`hr_agreement.pdf`) |
-
-The analysis of the isoflurane doses (how heart rate, breathing, the ECG beat and the pulse change
-with the dose) is in `isoflurane/`; see its README.
-
-## How the figures are built
-
-Each row of `ecg_filter_steps.png` and `ppg_vitals.png` is one stage of the processing. The
-columns follow the build-up from the signal to the filters to the filters acting on the signal:
-
-1. **The signal in time**, a few seconds of it.
-2. **Step 1, the signal in the frequency domain** (first row). A Fourier transform splits the
-   signal into sine waves; the amplitude spectrum shows how big the wave at each frequency is.
-   Different parts of the signal sit at different frequencies with different amplitudes:
-   breathing below 3.5 Hz, the heartbeat at its rate and at whole multiples of it (harmonics),
-   the mains at 50 Hz and its multiples (marked red in the ECG figure).
-   **Step 2, the filter in the frequency domain** (other rows). The filter's gain in dB at each
-   frequency: 0 dB passes unchanged, -6 dB leaves half the amplitude, -20 dB a tenth. A click (a
-   single 1 in a row of zeros) holds every frequency equally, so the Fourier transform of the
-   filtered click is the filter's gain.
-3. **Step 3, the filter acting on the signal** (all rows but the first, which has no filter).
-   The power spectrum before (grey) and after the filter, in dB. In the frequency domain a filter
-   multiplies every frequency by its gain, so in dB the gain is added: after = before + gain.
-4. **The averaged pulse or breath** (PPG only): all pulses lined up on the ECG's R waves (or all
-   breaths on their peaks), median. What happens at the same moment in every beat stays; noise
-   averages away. What the filters cost the ECG's heartbeat is in `notch_differences.png`.
-
-## The recordings
-
-The ECG chip filters before anything is stored: a digital high-pass at 0.5 Hz and a digital
-low-pass. The low-pass is at 153.6 Hz (the firmware default at 512 samples per
-second, which the GUI also sends; `SET DLPF 0` would switch it off).
-
-The analysis adds no low-pass of its own: the chip's is the only one. The mouse QRS has real
-content between 100 and 150 Hz, and a second low-pass on top of the chip's would cut it (a 150 Hz
-one takes up to 15 % of the QRS, median 7 %, in the 18 recordings since 24 Sep at 512 samples per
-second).
-
-## The filters (`filters.py`)
-
-| Filter | Setting | What it does |
+| File | Output | Recordings |
 |---|---|---|
-| ECG high-pass | 3 Hz, Butterworth order 4 | removes baseline drift and most of the breathing |
-| Mains notches | 50 and 150 Hz, Q 30 | remove the mains and its 3rd harmonic (1.7 and 5 Hz wide) |
-| PPG low-pass | 32 Hz, Butterworth order 4 | removes noise above the pulse |
-| PPG heart band | 4-11 Hz, Butterworth order 2 | keeps the heart-rate range (240-660 per minute) |
-| PPG breathing band | 0.15-3.5 Hz, Butterworth order 2 | keeps the breathing (9-210 per minute) |
+| `recording.py` | ECG in µV, PPG in nA, sampling rates; the PPG on the ECG's clock | `FILE` = 22 Oct 14:54:30 |
+| `filters.py` | every filter and setting, R waves and R times, SNR, HRV and its floor | |
+| `panels.py` | the panels of the step figures; the style of the other figures | |
+| `ecg_filter_steps.py` | the ECG stage by stage (`ecg_filter_steps.png`) | `FILE` |
+| `notch_differences.py` | the mains and ECG each notch removes (`notch_differences.png`) | `FILE` |
+| `ppg_vitals.py` | the PPG stage by stage; vitals per 30 s (`ppg_vitals.png`) | `FILE` |
+| `data_loss.py` | lost and clipped samples (printed) | `FILE` |
+| `quality.py` | signal quality per recording (`quality.csv`) | all 21 |
+| `hr_agreement.py` | PPG against ECG heart rate, Bland-Altman (`hr_agreement.pdf`) | 14: usable PPG, clear ECG, at least 20 s |
+| `checks.py` | the methods on made-up signals (printed) | 22 Oct 14:54:30 for real noise |
+| `isoflurane/` | heart rate, breathing, ECG beat and pulse against the dose; see its README | 3 runs, 14 recordings |
 
-Every filter runs forwards and backwards, so nothing moves in time; it then acts twice, which is
-why half the amplitude (-6 dB) is left at a cut-off. Notches at or above half the sampling rate
-do not exist and are left out (at 128 samples per second only 50 Hz).
+## Filters
 
-**Why only 50 and 150 Hz.** The mains has harmonics at 100, 150, 200 and 250 Hz too. A notch
-removes the mains at its frequency and the ECG there with it, so it is only worth using where
-the mains is much larger than that ECG. In the recordings since 24 Sep (median of 19, without
-the heating pad on AC; `notch_differences.py`):
+| Filter | Setting | Purpose |
+|---|---|---|
+| ECG high-pass | 3 Hz, Butterworth 4 | removes drift and most of the breathing |
+| Mains notches | 50 and 150 Hz, Q 30 | the only mains lines worth removing (below) |
+| ECG low-pass | none of its own | the chip's 153.6 Hz is enough; a 150 Hz one would take up to 15 % of the QRS (median 7 %) |
+| PPG low-pass | 32 Hz, Butterworth 4 | removes noise above the pulse |
+| PPG heart band | 4-11 Hz, Butterworth 2 | 240-660 per minute |
+| PPG breathing band | 0.15-3.5 Hz, Butterworth 2 | 9-210 per minute |
 
-| Notch | Mains removed | ECG removed | QRS change |
+All filters run forwards and backwards: nothing moves in time, and -6 dB is left at a cut-off.
+Notches at or above half the sampling rate are left out.
+
+### Mains notches
+
+A notch removes the ECG at its frequency too, so it is worth using only where
+the mains is much larger. Median of the 19 recordings since 24 Sep without the heating pad
+(`notch_differences.py`; the ECG removed is measured with the mains fitted out, which itself costs
+1-2 % of the QRS):
+
+| Notch | Mains removed | ECG removed | QRS change | Used |
+|---|---|---|---|---|
+| 50 Hz | 253 µV RMS | 8 µV RMS | -0.9 % | yes |
+| 100 Hz | 12 µV RMS | 16 µV RMS | -4.9 % | no: removes more ECG than mains |
+| 150 Hz | 72 µV RMS | 18 µV RMS | -2.7 % | yes |
+| 200 Hz | 0.8 µV RMS | 0.8 µV RMS | -0.2 % | no: nothing to remove |
+| 250 Hz | none | | | no: the chip's low-pass removes it |
+
+With the heating pad on AC, mains above 256 Hz folds back to 12, 38, 62, 112, 162 and 212 Hz,
+where no notch reaches.
+
+## Methods
+
+| Measure | How |
+|---|---|
+| R waves | in the 20-90 Hz band with all mains notched: peaks above 0.3 x the typical tall peak, at least 0.6 x the beat interval apart (skips the T wave); the beat interval from the band's autocorrelation, 80-300 ms; worked out per 30 s, as the rate changes by half within a recording |
+| Clear beat | the beat interval repeats clearly (autocorrelation peak at least 0.5); 0 pieces means no heartbeat (open leads, mains, human recordings) and the rate printed is noise |
+| R peak | the earliest peak at least 0.6 x the tallest from 20 ms before to 5 ms after, on the high-passed ECG, so a J wave taller than R is not taken |
+| R times | each QRS matched to the averaged beat of its 30 s and read between samples, within 0.1 ms; a mark on J (40 % of beats at 4 % isoflurane) no longer moves it |
+| Heart rate | 60 / R-R |
+| Averaged beat | median of the beats lined up on R, -100 to +100 ms; QRS = highest minus lowest point from -15 to +25 ms |
+| HRV | SDNN and RMSSD of the normal R-R in 30 s; normal = within 5 robust SDs of the median, at least 2 samples and at most 20 % from it |
+| HRV floor | what a perfectly regular heart reads with the recording's noise: RMSSD 0.11-0.39 ms, SDNN 0.07-0.22 ms here; a value near it is mostly noise |
+| SNR | beats lined up on their own R times (between samples); their average is the signal, what each beat differs from it the noise; 10 x log10 of the power ratio |
+| PPG heart rate | the strongest Welch peak in the heart band; breathing harmonics can take its place |
+| Breathing rate | the shortest autocorrelation peak at least 0.8 x the best, clear if the best is at least 0.5; a breath with two humps counts once |
+| Perfusion index | peak to peak of the pulse averaged on the R waves, in % of the light level |
+| PPG clock | PPG samples counted per ECG second; the PPG chip runs 0.15-0.35 % fast, anything else means lost samples |
+| Data loss | a time step longer than 1.5 samples; without a gap, lost samples move the mains above 50 Hz (1 in 91 gives 50.56 Hz) |
+| Clipping | ECG samples at the end of the chip's range (±131071) |
+
+### HRV
+
+SDNN holds all of the variability, a drifting heart rate too; RMSSD the beat-to-beat
+part. Both are smaller over shorter stretches and at faster heart rates, so only 30 s values are
+compared, and part of a change with the dose is the change of heart rate. `quality.py` gives the
+median (IQR) of each recording's 30 s pieces; per dose they are in `isoflurane/`.
+
+### SNR
+
+Lined up only to whole samples (1.95 ms), the SNR reads 1.5-6.6 dB too low. What the
+recordings reach and what is enough (`checks.py` with real noise made larger, `hr_agreement.py`):
+
+| ECG | SNR | Beats found | Extra beats |
 |---|---|---|---|
-| 50 Hz | 253 µV RMS | 8 µV RMS | -0.9 % |
-| 100 Hz | 12 µV RMS | 16 µV RMS | -4.9 % |
-| 150 Hz | 72 µV RMS | 18 µV RMS | -2.7 % |
-| 200 Hz | 0.8 µV RMS | 0.8 µV RMS | -0.2 % |
-| 250 Hz | none (the chip's low-pass removes it) | | |
+| chip's own noise, 0.82 µV RMS | would allow 35-45 dB | | |
+| recordings since 20 Oct | 6-15 dB | | |
+| 8 Oct, heating pad on AC | below 0 dB | | |
+| real noise of 22 Oct, as recorded | 13 dB | 99.9 % | 0.4 % |
+| the same noise x2 | 7 dB | 97 % | 3.5 % |
+| the same noise x3 | 4 dB | 95 % | 6.8 % |
 
-The 100 Hz notch sits in the middle of the QRS's frequencies and removes more ECG than mains;
-at 200 and 250 Hz there is nothing to remove. With the heating pad on AC the mains is so large
-that its harmonics above 256 Hz fold back to 12, 38, 62, 112, 162 and 212 Hz, where no notch at
-a multiple of 50 Hz reaches; no notch can bring that ECG back.
+The heart rate stays right in all three (the R-R rules drop the extra beats). The PPG heart
+rate is within 5 % of the ECG's in 117 of 118 pieces with a PPG SNR above -5 dB, and in 51 of 88
+below.
 
-## How the numbers are worked out
+## Figures
 
-**R waves.** The R wave is a sharp spike, so most of it sits at 20-90 Hz. In that band, with the
-mains notched out, peaks taller than 0.3 x the typical tall peak are R waves; each mark is then
-moved to the R peak of the ECG nearby (high-passed, so heights count from the baseline): the
-earliest peak at least 0.6 x the tallest there, so a J wave taller than R (common under
-isoflurane) is not taken for it. After each mark the finder waits 0.6 x the typical time between
-beats before it takes the next one, so a tall T wave (about 70 ms after R) is not counted as a
-second beat. The typical time between beats comes from the autocorrelation of the
-band's energy, searched from 80 to 300 ms (750 to 200 beats per minute) so breathing is not
-taken for it. Shifted by two beats it looks alike too, so one beat is the shortest delay at
-least 0.8 times as alike as the best one; if the best is less than half as alike as delay 0, no
-beat repeat is clear and the wait is 80 ms. The wait and the height threshold are worked out for
-every 30 s on its own, because the heart rate can change by half within one recording. Movement
-can still add false beats. Heart rate = 60 / time between two R waves. The scripts print in how
-many 30 s pieces the beat repeats clearly. In a recording with no heartbeat (open leads, copper
-tape, mains swamping the ECG) it is 0, and the heart rate printed is noise. Human recordings
-also show 0, because only mouse rates are searched; their R waves are large enough to be found
-anyway.
+Each row of `ecg_filter_steps.png` and `ppg_vitals.png` is one stage of the processing:
 
-**Averaged beat.** All beats lined up on their R waves, median, from 100 ms before to 100 ms
-after R. QRS = highest minus lowest point from 15 ms before to 25 ms after R.
+| Column | Shows |
+|---|---|
+| 1 | a few seconds of the signal |
+| 2 | first row: the amplitude spectrum, mains marked red; other rows: the filter's gain in dB (0 passes, -6 half, -20 a tenth), the spectrum of a filtered click |
+| 3 | the power spectrum before (grey) and after the filter; in dB, after = before + gain |
+| 4 | PPG only: the pulse averaged on the R waves, or the breath on its peaks |
 
-**PPG on the ECG's clock.** The PPG chip's clock runs about 0.2 % fast, so its samples drift
-against the ECG. `recording.py` counts the PPG samples per ECG second and uses that as the PPG
-sampling rate. In a complete recording the PPG has 0.15-0.35 % more samples than its setting
-says; anything else means samples were lost, and the script warns that PPG-to-ECG timing is not
-reliable.
+## Recordings used
 
-**Vitals, per 30 s window** (`ppg_vitals.py`):
-- Heart rate from the ECG, and from the PPG as the strongest frequency in the heart band (Welch).
-  In mice the heart band also holds breathing harmonics, so the PPG value can miss the heart.
-- Breathing rate from the autocorrelation of the breathing band: how much the signal looks like
-  itself when shifted by a delay. It looks most alike when shifted by exactly one breath, also
-  when each breath has two humps, where counting peaks would count two breaths. The likeness is
-  averaged over the part that overlaps, and only its peaks count (at the shortest delays it is
-  still falling from delay 0). Shifted by two breaths it looks alike too, so one breath is the
-  shortest delay at least 0.8 times as alike as the best one, read between samples (a parabola
-  through the peak and its two neighbours). A window gets a value only if the
-  best peak is at least half as alike as delay 0; otherwise its breathing is not clear (a moving
-  animal, or breathing faster than the band's 210 per minute).
-- Perfusion index = the size (peak to peak) of the pulse averaged on the R waves, in % of the
-  light level. Taken from the averaged pulse because the heart band alone holds breathing too.
-
-**Signal-to-noise ratio (SNR).** What repeats with every heartbeat is the signal, the rest is noise.
-The ECG (after the high-pass and the notches) and the PPG heart band are cut into pieces one beat
-interval long, centred on the R waves and read between samples (a cubic spline), so each beat is
-lined up on its own R time; lined up only to the nearest sample (1.95 ms apart), part of the 3 ms
-wide R wave would count as noise and the SNR would read too low (by 1.5-6.6 dB in the recordings
-since 20 Oct). Their average is the signal, and what each beat differs from the average is the
-noise. SNR = 10 x log10(signal power / noise power), in dB: 0 dB is as much noise as signal, 10 dB a
-tenth of it, 20 dB a hundredth. The average still holds 1/n of the noise of its n beats, which is
-taken off its power. It is the idea of the PPG SNR in Serri Mazandarani (2025): the power at the
-heart rate and its harmonics against the rest, here following each beat's own timing. Changes of the
-beat itself from beat to beat (breathing changes the size of the pulse) count as noise too. The ECG
-chip's own noise (0.82 µV RMS, 0.05-150 Hz; MAX30003 datasheet p. 3) would allow 35-45 dB; the
-recordings since 20 Oct reach 6-15 dB (8 Oct and the heating pad on AC below 0 dB): the noise left
-is not the chip's but comes with the electrodes, movement and mains, and the beat's own changes.
-What is enough (`checks.py`, real noise made larger; `hr_agreement.py`): at 13 dB 99.9 % of the
-beats are found, at 7 dB 97 % (and 3.5 % extra, which the R-R rules drop), at 4 dB 95 %; the heart
-rate stays right at all three. The PPG heart rate is right (within 5 % of the ECG's) in 117 of 118
-pieces with a PPG SNR above -5 dB, and in 51 of 88 below.
-
-**Heart-rate variability (HRV).** From the R-R intervals of 30 s. A mouse's beat-to-beat changes are
-smaller than the 2 ms between samples, so each R time is found between samples: each beat's QRS is
-matched to the averaged beat of its 30 s, and the R peak of the averaged beat gives the time
-(within 0.1 ms on made-up beats). The matching also keeps a mark on the J wave from moving the
-time by 10 ms, which happens to about 40 % of the beats at 4 % isoflurane. Only normal intervals
-count: within 5 robust SDs of the median (robust SD: 1.48 x the median distance from the median,
-which one odd interval cannot inflate), but at least 2 samples and at most 20 % from it; premature
-beats, pauses, missed or extra R waves are not normal. SDNN is the standard deviation of the normal
-intervals, RMSSD the root mean square of the differences between successive ones. SDNN holds all
-of the variability, a heart rate drifting within the 30 s too; RMSSD holds the beat-to-beat part.
-Both are smaller over shorter stretches and at faster heart rates, so only values over stretches
-of the same length are compared, and part of a change with the dose is the change of heart rate.
-Noise moves the R times a little, so even a perfectly regular heart reads some SDNN and RMSSD:
-`filters.hrv_floor` takes the averaged beat out at every R time, puts it back at regular times and
-finds the R waves again. In these recordings the floor is RMSSD 0.11-0.39 ms and SDNN 0.07-0.22 ms
-(`isoflurane/snr_hrv.csv`; 0.04 ms without noise); a value close to its floor is mostly
-measurement noise.
-`quality.py` gives the SNR and HRV of each recording as the median (IQR) of its 30 s pieces with a
-clear beat; a recording through several doses mixes them, so per dose they are in `isoflurane/`.
-
-**ECG filtering levels.** Each level adds one filter to the level before: raw, + 3 Hz high-pass,
-+ 50 Hz notch, + 150 Hz notch. For finding the R waves, every mains frequency is notched out.
-
-**Notch differences.** Each mains frequency (50, 100, 150, 200, 250 Hz) is tried as a notch on
-its own. To show only the ECG a notch removes, it is tried on the ECG with the mains fitted out:
-in each second, the mains waves that best match the ECG are found and subtracted, so what a
-notch then removes can only be ECG. Each row of `notch_differences.png` shows the ECG after the
-notch with the ECG it removed beside it, the removed ECG enlarged, the averaged beat before and
-after, and the recording's power spectrum close to the notch before and after (a tall line
-there is mains). The script prints how much mains and how much ECG each notch removes. The fit
-itself removes a little ECG too (about 1-2 % of the QRS), so the losses shown are slightly
-smaller than the true ones.
-
-**Data loss.** Gaps: a step between two time stamps longer than 1.5 samples means samples are
-missing there. Loss without a gap: lost samples make the signal look sped up, so the mains
-appears above 50 Hz (one sample lost in 91 moves it to 50.56 Hz); the lost share is
-1 - 50 / that frequency. Clipping: the share of ECG samples at the end of the chip's range
-(-131072 to 131071, `ecg_raw`), where the ECG is cut off.
-
-## Which recordings are used
-
-- Recordings without a settings line (the first line starting with `#`) are not used.
-- The PPG is used only when the settings line gives its range (`adc_range`), the IR level is at
-  least 150 nA (below that the sensor is not on the skin) and the IR is not clipped at the top of
-  the range for most of the recording.
-- SpO2 is not calculated: its constants A and B have no calibration for this sensor.
+| Used | When |
+|---|---|
+| the recording | it has a settings line (first line, starting with `#`) |
+| the PPG | the settings line gives its range (`adc_range`), IR at least 150 nA (on the skin), not clipped for most of the recording |
+| SpO2 | never: its constants A and B have no calibration for this sensor |
 
 ## Sources
 
 - Bhadouria VS et al. (2025) Signal Image Video Process 19:231, p. 5: mouse heart rate as the
   highest Welch peak in 4-11 Hz.
-- Oliveira RG et al. (2022) Sensors 22:4264, p. 6: mouse breathing band 0.5-3.5 Hz (heartbeat
-  band 5.5-8 Hz, too narrow for these mice).
+- Oliveira RG et al. (2022) Sensors 22:4264, p. 6: mouse breathing band 0.5-3.5 Hz.
 - Serri Mazandarani M (2025) Photoplethysmography systems for vital signs monitoring in humans and
-  small animal models, thesis, Université Laval, pp. 70 and 73: PPG low-pass 32 Hz (used there on
-  human finger PPG; no mouse value is given); pp. 67-68: PPG SNR as the power at the pulse rate and
-  its first two harmonics against the noise floor; p. 24: 28.5 dB needed for a heart rate within
-  1 per minute, 39 dB for SpO2 within 2 %; p. 89: a clear PPG from the mouse thorax has an SNR above
-  10 dB.
+  small animal models, thesis, Université Laval: PPG low-pass 32 Hz on human finger PPG (pp. 70 and
+  73); PPG SNR as the power at the pulse rate and its harmonics against the noise (pp. 67-68);
+  28.5 dB for a heart rate within 1 per minute (p. 24); a clear mouse PPG above 10 dB (p. 89).
 - Analog Devices, MAX30003 datasheet, p. 3: input-referred noise 0.82 µV RMS (0.05-150 Hz).
 - Shaffer F, Ginsberg JP (2017) Front Public Health 5:258: SDNN and RMSSD (pp. 2 and 4); a faster
   heart rate lowers the HRV (p. 8); shorter recordings give smaller values (p. 13).
