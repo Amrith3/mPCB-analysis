@@ -107,10 +107,11 @@ a multiple of 50 Hz reaches; no notch can bring that ECG back.
 
 **R waves.** The R wave is a sharp spike, so most of it sits at 20-90 Hz. In that band, with the
 mains notched out, peaks taller than 0.3 x the typical tall peak are R waves; each mark is then
-moved to the R peak of the ECG nearby: the earliest peak at least 0.6 x the tallest there, so a J
-wave taller than R (common under isoflurane) is not taken for it. After each mark the finder waits 0.6 x the typical time
-between beats before it takes the next one, so a tall T wave (about 70 ms after R) is not
-counted as a second beat. The typical time between beats comes from the autocorrelation of the
+moved to the R peak of the ECG nearby (high-passed, so heights count from the baseline): the
+earliest peak at least 0.6 x the tallest there, so a J wave taller than R (common under
+isoflurane) is not taken for it. After each mark the finder waits 0.6 x the typical time between
+beats before it takes the next one, so a tall T wave (about 70 ms after R) is not counted as a
+second beat. The typical time between beats comes from the autocorrelation of the
 band's energy, searched from 80 to 300 ms (750 to 200 beats per minute) so breathing is not
 taken for it. Shifted by two beats it looks alike too, so one beat is the shortest delay at
 least 0.8 times as alike as the best one; if the best is less than half as alike as delay 0, no
@@ -146,24 +147,24 @@ reliable.
 - Perfusion index = the size (peak to peak) of the pulse averaged on the R waves, in % of the
   light level. Taken from the averaged pulse because the heart band alone holds breathing too.
 
-**Signal-to-noise ratio (SNR).** What repeats with every heartbeat is the signal, the rest is
-noise. The ECG (after the high-pass and the notches) and the PPG heart band are cut into pieces
-one beat interval long, centred on the R waves and read between samples (a cubic spline), so each
-beat is lined up on its own R time; lined up only to the nearest sample (1.95 ms apart), part of the
-3 ms wide R wave would count as noise and the SNR would read too low (by 1.5-6.6 dB here). Their average is the
-signal, and what each beat differs from the average is the noise. SNR = 10 x log10(signal power / noise power), in dB: 0 dB is
-as much noise as signal, 10 dB a tenth of it, 20 dB a hundredth. The average still holds 1/n of the
-noise of its n beats, which is taken off its power. It is the idea of the PPG SNR in Serri
-Mazandarani (2025): the power at the heart rate and its harmonics against the rest, here following
-each beat's own timing. Changes of the beat itself from beat to beat (breathing changes the size of
-the pulse) count as noise too. The ECG chip's own noise (0.82 µV RMS, 0.05-150 Hz; MAX30003
-datasheet p. 3) would allow 35-45 dB; the recordings since 20 Oct reach 6-15 dB (8 Oct and the
-heating pad on AC below 0 dB), the rest is noise from the electrodes and movement. Papers often give instead the QRS peak
-to peak against the noise between beats, which reads about 20 dB higher. What is enough (`checks.py`, real noise made
-larger; `hr_agreement.py`): at 13 dB 99.9 % of the beats are found, at 7 dB 97 % (and 3.5 % extra,
-which the R-R rules drop), at 4 dB 95 %; the heart rate stays right at all three. The PPG heart rate
-is right (within 5 % of the ECG's) in 117 of 118 pieces with a PPG SNR above -5 dB, and in 51 of 88
-below.
+**Signal-to-noise ratio (SNR).** What repeats with every heartbeat is the signal, the rest is noise.
+The ECG (after the high-pass and the notches) and the PPG heart band are cut into pieces one beat
+interval long, centred on the R waves and read between samples (a cubic spline), so each beat is
+lined up on its own R time; lined up only to the nearest sample (1.95 ms apart), part of the 3 ms
+wide R wave would count as noise and the SNR would read too low (by 1.5-6.6 dB in the recordings
+since 20 Oct). Their average is the signal, and what each beat differs from the average is the
+noise. SNR = 10 x log10(signal power / noise power), in dB: 0 dB is as much noise as signal, 10 dB a
+tenth of it, 20 dB a hundredth. The average still holds 1/n of the noise of its n beats, which is
+taken off its power. It is the idea of the PPG SNR in Serri Mazandarani (2025): the power at the
+heart rate and its harmonics against the rest, here following each beat's own timing. Changes of the
+beat itself from beat to beat (breathing changes the size of the pulse) count as noise too. The ECG
+chip's own noise (0.82 µV RMS, 0.05-150 Hz; MAX30003 datasheet p. 3) would allow 35-45 dB; the
+recordings since 20 Oct reach 6-15 dB (8 Oct and the heating pad on AC below 0 dB): the noise left
+is not the chip's but comes with the electrodes, movement and mains, and the beat's own changes.
+What is enough (`checks.py`, real noise made larger; `hr_agreement.py`): at 13 dB 99.9 % of the
+beats are found, at 7 dB 97 % (and 3.5 % extra, which the R-R rules drop), at 4 dB 95 %; the heart
+rate stays right at all three. The PPG heart rate is right (within 5 % of the ECG's) in 117 of 118
+pieces with a PPG SNR above -5 dB, and in 51 of 88 below.
 
 **Heart-rate variability (HRV).** From the R-R intervals of 30 s. A mouse's beat-to-beat changes are
 smaller than the 2 ms between samples, so each R time is found between samples: each beat's QRS is
