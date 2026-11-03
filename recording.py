@@ -40,8 +40,10 @@ def load(file=FILE):
     rec["ecg_raw"] = ecg["ecg_raw"].to_numpy()
     seconds = len(rec["ecg"]) / rec["fs_ecg"]
     print("ECG:", len(rec["ecg"]), "samples at", rec["fs_ecg"], "per second")
-    notes = data[data["note"].notna()]
-    rec["notes"] = list(zip(notes["time_s"], notes["note"].astype(str)))
+    rec["notes"] = []
+    if "note" in data:                       # older recordings have no note column
+        notes = data[data["note"].notna()]
+        rec["notes"] = list(zip(notes["time_s"], notes["note"].astype(str)))
     temp = data[data["temp_c"].notna()]
     rec["t_temp"] = temp["time_s"].to_numpy()
     rec["temp_c"] = temp["temp_c"].to_numpy()

@@ -25,7 +25,8 @@ def note(ax, text):
 
 panels.figure_style()
 n = len(d["doses"])
-fig, axes = plt.subplots(4, n, figsize=(6.3, 7.4), sharex="row", sharey="row", layout="constrained")
+fig, axes = plt.subplots(4, n, figsize=(6.3, 7.4), sharex="row", sharey="row", layout="constrained",
+                         squeeze=False)
 for col, c in enumerate(d["doses"]):
     ax = axes[0, col]
     points = sessions.ecg_points(d["t_ecg"], c["beat"])

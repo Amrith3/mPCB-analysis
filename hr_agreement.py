@@ -10,6 +10,8 @@ import contextlib
 import glob
 import io
 import os
+import re
+from datetime import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,7 +27,8 @@ for z in glob.glob(os.path.join(DATA, "*.zip")):
 ecg_hr, ppg_hr, session = [], [], []
 print("recording: pieces with a clear beat, PPG within 5 % of ECG")
 for f in sorted(glob.glob(os.path.join(DATA, "*", "**", "*.csv"), recursive=True), key=os.path.basename):
-    day = os.path.basename(f)[17:19] + " Oct"
+    when = datetime.strptime(re.search(r"\d{8}_\d{6}", os.path.basename(f)).group(), "%Y%m%d_%H%M%S")
+    day = "%d %s" % (when.day, when.strftime("%b"))
     mouse = os.path.basename(os.path.dirname(f))
     label = day + (", " + mouse[6:-1] + " g" if mouse.startswith("mouse_") and mouse.endswith("g") else "")
     pieces = []

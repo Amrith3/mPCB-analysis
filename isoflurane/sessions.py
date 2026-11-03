@@ -1,5 +1,6 @@
 """Isoflurane sessions: all recordings of one session on one clock, the dose from the notes,
-the vitals every 10 s, and the averaged beat at each dose."""
+the vitals, signal-to-noise ratios and heart-rate variability every 10 s, and the averaged beat
+at each dose."""
 import contextlib
 import glob
 import io
@@ -26,7 +27,7 @@ SESSIONS = {
     "26 Oct, 30 g": ("mouse_isoflurane_20261026", "mouse_30g"),
 }
 STEP_S = 10
-PPG_WINDOW_S = 30
+WINDOW_S = 30
 
 
 def files(name):
@@ -43,8 +44,8 @@ def started(file):
 def dose_in(note):
     """The isoflurane % a note sets; nan if it is about isoflurane but gives no level; None if
     it is not about isoflurane."""
-    level = re.search(r"(?:to|at)\s*(\d+(?:\.\d+)?)", note)
-    if level:
+    level = re.search(r"\b(?:to|at)\s*(\d+(?:\.\d+)?)", note)
+    if level and float(level.group(1)) <= 5:     # a vaporizer goes up to 5 %
         return float(level.group(1))
     if re.search(r"iso|anes", note):
         return np.nan
@@ -53,9 +54,11 @@ def dose_in(note):
 
 def vitals(name):
     """Every 10 s of the session: time (s from the first recording's start), dose (%), heart rate
-    (ECG), breathing rate and perfusion index (PPG, 30 s around it), temperature (°C)."""
+    (ECG), temperature (°C); from the 30 s around it: breathing rate and perfusion index (PPG),
+    signal-to-noise ratio of the ECG and of the PPG heart band (dB), SDNN and RMSSD (ms)."""
     first = started(files(name)[0])
-    v = {k: [] for k in ["t", "hr", "noise", "mains", "breathing", "ppg_hr", "pi", "temp"]}
+    v = {k: [] for k in ["t", "hr", "noise", "mains", "breathing", "ppg_hr", "pi", "temp",
+                         "ecg_snr", "ppg_snr", "sdnn", "rmssd"]}
     changes = []
     for f in files(name):
         with contextlib.redirect_stdout(io.StringIO()):
@@ -71,6 +74,9 @@ def vitals(name):
         t = rec["t_ecg"]
         hp = filters.ecg_highpass(rec["ecg"], fs)
         notched = filters.notches(hp, fs, filters.MAINS_HZ)
+        used = filters.notches(hp, fs)
+        r_t = filters.r_times(rec["ecg"], t, fs, r)
+        matched = ~np.isnan(r_t)
         r_times = t[r]
         rr = np.diff(r_times)
         rr_t = r_times[1:]
@@ -99,24 +105,39 @@ def vitals(name):
             v["temp"].append(np.median(rec["temp_c"][warm]) if warm.any() else np.nan)
 
             middle = s + STEP_S / 2
-            if not has_ppg or middle - PPG_WINDOW_S / 2 < 0 or middle + PPG_WINDOW_S / 2 > tp[-1]:
+            whole = middle - WINDOW_S / 2 >= 0 and middle + WINDOW_S / 2 <= t[-1]
+            beat_t = r_t[matched & (r_t >= middle - WINDOW_S / 2) & (r_t < middle + WINDOW_S / 2)]
+            period = np.median(np.diff(beat_t)) if len(beat_t) >= 10 else np.nan
+            if whole and len(beat_t) >= 10:
+                v["ecg_snr"].append(filters.snr_db(used, np.searchsorted(t, beat_t), int(period * fs)))
+                sdnn, rmssd = filters.hrv(np.diff(beat_t), fs)
+            else:
+                v["ecg_snr"].append(np.nan)
+                sdnn = rmssd = np.nan
+            v["sdnn"].append(sdnn)
+            v["rmssd"].append(rmssd)
+            if not has_ppg or middle - WINDOW_S / 2 < 0 or middle + WINDOW_S / 2 > tp[-1]:
                 v["breathing"].append(np.nan)
                 v["ppg_hr"].append(np.nan)
                 v["pi"].append(np.nan)
+                v["ppg_snr"].append(np.nan)
                 continue
-            near = (tp >= middle - PPG_WINDOW_S / 2) & (tp < middle + PPG_WINDOW_S / 2)
+            near = (tp >= middle - WINDOW_S / 2) & (tp < middle + WINDOW_S / 2)
             v["breathing"].append(filters.breathing_rate(breath[near], fp))
-            fr, p = welch(heart[near], fs=fp, nperseg=int(10 * fp), nfft=int(PPG_WINDOW_S * fp))
+            fr, p = welch(heart[near], fs=fp, nperseg=int(10 * fp), nfft=int(WINDOW_S * fp))
             band = (fr >= filters.HEART_HZ[0]) & (fr <= filters.HEART_HZ[1])
             v["ppg_hr"].append(60 * fr[band][np.argmax(p[band])])
-            in_window = (r_times >= middle - PPG_WINDOW_S / 2) & (r_times < middle + PPG_WINDOW_S / 2)
+            in_window = (r_times >= middle - WINDOW_S / 2) & (r_times < middle + WINDOW_S / 2)
             pulse = panels.averaged(heart, pulses[in_window], int(0.15 * fp))
             v["pi"].append(np.nan if pulse is None else 100 * np.ptp(pulse) / np.mean(ppg[near]))
+            v["ppg_snr"].append(filters.snr_db(heart, np.searchsorted(tp, beat_t), int(period * fp))
+                                if len(beat_t) >= 10 else np.nan)
 
     v = {k: np.array(x) for k, x in v.items()}
     # ECG noise or mains far above the session's usual (movement, heating pad) -> no heart rate there
     v["clean"] = (v["noise"] <= 3 * np.median(v["noise"])) & (v["mains"] <= 5 * np.median(v["mains"]))
-    v["hr"][~v["clean"]] = np.nan
+    for key in ["hr", "ecg_snr", "ppg_snr", "sdnn", "rmssd"]:
+        v[key][~v["clean"]] = np.nan
     # breathing more than 30 % from the median of the minute around it: two breaths taken for one
     b = v["breathing"]
     around = np.full(len(b), np.nan)

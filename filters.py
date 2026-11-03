@@ -1,4 +1,5 @@
-"""Filters, ECG filtering levels, filter gain and R-wave detection.
+"""Filters, ECG filtering levels, filter gain, R-wave detection, signal-to-noise ratio and
+heart-rate variability.
 
 All filters are zero-phase (forwards and backwards), so -6 dB at a cut-off.
 The chip already applies a 0.5 Hz high-pass and a 153.6 Hz low-pass (102.4 Hz before 24 Sep 2026).
@@ -45,7 +46,10 @@ def mains_fitted_out(x, fs):
         waves.append(np.cos(2 * np.pi * f0 * t))
         waves.append(np.sin(2 * np.pi * f0 * t))
     waves = np.array(waves).T
-    for start in range(0, len(x) - n + 1, n):
+    starts = list(range(0, len(x) - n + 1, n))
+    if len(x) % n and len(x) > n:
+        starts.append(len(x) - n)            # the last part second, fitted with the second before it
+    for start in starts:
         piece = x[start:start + n] - np.mean(x[start:start + n])
         sizes = np.linalg.lstsq(waves, piece, rcond=None)[0]
         y[start:start + n] = x[start:start + n] - waves @ sizes
@@ -142,13 +146,15 @@ def r_waves(ecg, fs, pieces_out=None):
           " (few or none: the heart rate may be noise)")
 
     # move each mark to the R peak from 20 ms before to 5 ms after: the earliest peak at least
-    # 0.6 x the tallest there, so a J wave taller than R is not taken for it
+    # 0.6 x the tallest there, so a J wave taller than R is not taken for it; high-passed, so the
+    # 0.6 is of the height above the baseline
+    level = ecg_highpass(x, fs)
     before = int(0.020 * fs)
     after = int(0.005 * fs)
     r = r[(r > before) & (r < len(ecg) - after - 1)]
     for i in range(len(r)):
         start = r[i] - before
-        seg = x[start:r[i] + after + 1]
+        seg = level[start:r[i] + after + 1]
         tops, _ = find_peaks(seg)
         tops = tops[seg[tops] >= 0.6 * np.max(seg)]
         r[i] = start + (tops[0] if len(tops) else np.argmax(seg))
@@ -183,3 +189,72 @@ def beats_in(band, fs):
     tall = heights[heights > np.percentile(heights, 80)]
     r, _ = find_peaks(band, height=0.3 * np.median(tall), distance=wait)
     return r, repeat
+
+
+def r_times(ecg, t, fs, r, shift_ms=12):
+    """R-wave times between samples (nan where a beat cannot be matched). Each beat's QRS (-20 to
+    30 ms) is matched to the averaged beat of its 30 s, so a mark on the J wave instead of R
+    (isoflurane can make J the taller) still gives the beat's time; that time is the averaged
+    beat's R peak, read between samples with parabolas (a mouse's beat-to-beat changes are
+    smaller than the time between samples)."""
+    x = ecg_highpass(notches(ecg, fs, MAINS_HZ), fs)
+    m = round(shift_ms * fs / 1000)
+    lo, hi = round(-0.020 * fs), round(0.030 * fs)
+    n = hi - lo
+    times = np.full(len(r), np.nan)
+    piece = r // int(30 * fs)
+    room = (r + lo - m - 1 >= 0) & (r + hi + m + 1 <= len(x))
+    for p in np.unique(piece[room]):
+        k = np.flatnonzero(room & (piece == p))
+        if len(k) < 10:
+            continue
+        wide = x[r[k, None] + np.arange(lo - m - 1, hi + m + 1)]   # each beat with room to shift
+        rows = np.arange(len(k))[:, None]
+        shift = np.full(len(k), m + 1)                              # column m + 1 = not shifted
+        for _ in range(3):
+            average = np.median(wide[rows, shift[:, None] + np.arange(n)], axis=0)
+            match = np.array([wide[:, j:j + n] @ average for j in range(2 * m + 3)]).T
+            shift = 1 + np.argmax(match[:, 1:-1], axis=1)
+        between = top_between(*[match[rows[:, 0], shift + d] for d in (-1, 0, 1)])
+        search = average[:-lo + round(0.005 * fs) + 1]              # -20 to 5 ms, as r_waves
+        tops, _ = find_peaks(search)
+        tops = tops[search[tops] >= 0.6 * np.max(search)]
+        q = tops[0] if len(tops) else int(np.argmax(search))
+        q = q + top_between(*average[q - 1:q + 2]) if 0 < q < n - 1 else q
+        times[k] = t[r[k]] + (shift - m - 1 + between + lo + q) / fs
+    return times
+
+
+def top_between(a, b, c):
+    """Where between samples the top of a parabola through three points lies (-0.5 to 0.5)."""
+    curve = a - 2 * b + c
+    return np.clip(np.where(curve < 0, 0.5 * (a - c) / np.where(curve < 0, curve, -1), 0), -0.5, 0.5)
+
+
+def hrv(rr, fs):
+    """SDNN and RMSSD (ms) of R-R intervals in s, in order. Only normal intervals count: within
+    5 robust SDs of the median, but at least 2 samples and at most 20 % (premature beats, pauses,
+    missed or extra R waves are not). nan with fewer than 20 normal intervals."""
+    middle = np.median(rr)
+    spread = 1.4826 * np.median(np.abs(rr - middle))     # the SD, if the intervals were normal-distributed
+    normal = np.abs(rr - middle) <= np.clip(5 * spread, 2 / fs, 0.2 * middle)
+    if np.sum(normal) < 20:
+        return np.nan, np.nan
+    both = normal[1:] & normal[:-1]
+    return 1000 * np.std(rr[normal], ddof=1), 1000 * np.sqrt(np.mean(np.diff(rr)[both] ** 2))
+
+
+def snr_db(x, centres, period):
+    """Signal-to-noise ratio (dB) of a signal that repeats with every beat. One beat interval
+    (period, in samples) around each centre; the average of those is the signal, what each beat
+    differs from it is the noise. The average still holds 1/n of the noise of n beats, which is
+    taken off. nan with fewer than 10 beats or no signal left."""
+    half = period // 2
+    beats = np.array([x[c - half:c + half] for c in centres if c - half >= 0 and c + half <= len(x)])
+    n = len(beats)
+    if n < 10:
+        return np.nan
+    average = np.mean(beats, axis=0)
+    noise = np.mean((beats - average) ** 2) * n / (n - 1)
+    signal = np.var(average) - noise / n
+    return 10 * np.log10(signal / noise) if signal > 0 else np.nan
