@@ -107,6 +107,8 @@ for i in range(4):
     plt.subplot(5, 4, 4 * i + 2)
     if answer is None:
         panels.step1_amplitude(x, fs, "nA")
+        plt.subplot(5, 4, 4 * i + 3)
+        panels.power_spectrum(x, fs)
     else:
         panels.step2_gain(answer, fs)
         plt.subplot(5, 4, 4 * i + 3)

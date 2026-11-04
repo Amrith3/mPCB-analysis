@@ -97,7 +97,7 @@ recordings reach and what is enough (`checks.py` with real noise made larger, `h
 |---|---|---|---|
 | chip's own noise, 0.82 µV RMS | would allow 35-45 dB | | |
 | recordings since 20 Oct | 6-15 dB | | |
-| 8 Oct, heating pad on AC | below 0 dB | | |
+| 8 Oct (mains 79-100 % of the ECG), 22 Oct 15:51 (heating pad on AC) | below 0 dB | | |
 | real noise of 22 Oct, as recorded | 13 dB | 99.9 % | 0.4 % |
 | the same noise x2 | 7 dB | 97 % | 3.5 % |
 | the same noise x3 | 4 dB | 95 % | 6.8 % |
@@ -106,6 +106,26 @@ The heart rate stays right in all three (the R-R rules drop the extra beats). Th
 rate is within 5 % of the ECG's in 117 of 118 pieces with a PPG SNR above -5 dB, and in 51 of 88
 below.
 
+## Checks
+
+| What is checked | How | Result |
+|---|---|---|
+| each method on a signal with a known answer | `checks.py`: made-up signals for the SNR, R waves, R times, HRV and its floor, mains fit, breathing rate, wave boundaries and dose notes | ends with "all checks passed" |
+| R waves in real noise | `checks.py`: the noise of 22 Oct 14:54:30 as recorded, x2 and x3 | 99.9, 97 and 95 % of the beats found; heart rate right in all three |
+| ECG heart rate against a second sensor | `hr_agreement.py`: the PPG heart rate of each 30 s piece | within 5 % in 82 % of the pieces, and in 117 of 118 with a PPG SNR above -5 dB |
+| ECG heart rate against the ECG chip's own R-R detector | the `rtor_ms` column of the recordings, every 10 s (`isoflurane/README.md`) | within 5 % in 96-98 % of the windows on 20 Oct and for the 25 g mouse |
+| breathing rate by a second method | the strongest frequency of the breathing band (Welch) against the autocorrelation | within 10 % in 89-97 % of the windows |
+| lost and clipped samples | `data_loss.py`, `quality.py` | no lost samples in any of the 21 recordings; at most 0.15 % of the ECG clipped |
+
+Not checked:
+
+| What | Why |
+|---|---|
+| breathing rate against a count | no independent count, apart from a few breath counts in the notes |
+| skin temperature against a thermometer | no reference probe was used; the sensor reads 25-32 °C |
+| SpO2 | not worked out: no calibration for this sensor |
+| differences between animals | 2 mice in 3 runs (the 30 g mouse on 22 and 26 Oct), so every result is within one animal |
+
 ## Figures
 
 Each row of `ecg_filter_steps.png` and `ppg_vitals.png` is one stage of the processing:
@@ -113,9 +133,21 @@ Each row of `ecg_filter_steps.png` and `ppg_vitals.png` is one stage of the proc
 | Column | Shows |
 |---|---|
 | 1 | a few seconds of the signal |
-| 2 | first row: the amplitude spectrum, mains marked red; other rows: the filter's gain in dB (0 passes, -6 half, -20 a tenth), the spectrum of a filtered click |
-| 3 | the power spectrum before (grey) and after the filter; in dB, after = before + gain |
+| 2 | first row: the FFT of the signal (amplitude), mains marked red; other rows: the filter's gain in dB (0 passes, -6 half, -20 a tenth), the spectrum of a filtered click |
+| 3 | the power spectrum in dB; first row: of the signal; other rows: before (grey) and after the filter, after = before + gain |
 | 4 | PPG only: the pulse averaged on the R waves, or the breath on its peaks |
+
+The panels of `hr_agreement.png`:
+
+| Panel | Shows |
+|---|---|
+| A | ECG and PPG heart rate of each 30 s piece, in time order |
+| B | PPG against ECG; on the line they agree |
+| C | Bland-Altman: PPG - ECG against their mean; the bias (solid) and the limits of agreement, bias ± 1.96 SD (dashed) |
+
+Where the PPG is wrong (38 of 206 pieces) it reads low in all but one, and in 13 it is twice the
+breathing rate: at 1 % isoflurane the mouse breathes about 200 times a minute, and the second harmonic of
+the breath falls in the heart band.
 
 ## Recordings used
 

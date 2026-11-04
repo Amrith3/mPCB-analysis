@@ -5,7 +5,8 @@ Recordings where the ECG's beat repeats clearly in fewer than half the 30 s piec
 (the ECG is the reference). One value pair per 30 s piece in which the beat repeats clearly:
 ECG: 60 / median R-R. PPG: the strongest frequency in the heart band (Welch), as in ppg_vitals.py.
 Bias = mean of PPG - ECG; limits of agreement = bias ± 1.96 SD.
-It also prints how often the PPG heart rate is within 5 % of the ECG's at each PPG SNR (filters.snr_db).
+It also prints how often the PPG heart rate is within 5 % of the ECG's at each PPG SNR (filters.snr_db),
+and how many of the wrong pieces are at twice the breathing rate.
 """
 import contextlib
 import glob
@@ -25,7 +26,7 @@ from recording import DATA, load, unzip
 for z in glob.glob(os.path.join(DATA, "*.zip")):
     unzip(os.path.basename(z)[:-4])
 
-ecg_hr, ppg_hr, ppg_snr, session = [], [], [], []
+ecg_hr, ppg_hr, ppg_snr, breath_rate, session = [], [], [], [], []
 print("recording: pieces with a clear beat, PPG within 5 % of ECG")
 for f in sorted(glob.glob(os.path.join(DATA, "*", "**", "*.csv"), recursive=True), key=os.path.basename):
     when = datetime.strptime(re.search(r"\d{8}_\d{6}", os.path.basename(f)).group(), "%Y%m%d_%H%M%S")
@@ -41,7 +42,9 @@ for f in sorted(glob.glob(os.path.join(DATA, "*", "**", "*.csv"), recursive=True
     r_times = rec["t_ecg"][r]
     r_t = filters.r_times(rec["ecg"], rec["t_ecg"], rec["fs_ecg"], r)
     fp, tp = rec["fs_ppg"], rec["t_ppg"]
-    heart = filters.heart_band(filters.ppg_lowpass(rec["ir_nA"], fp), fp)
+    light = filters.ppg_lowpass(rec["ir_nA"], fp)
+    heart = filters.heart_band(light, fp)
+    breath = filters.breathing_band(light, fp)
     pairs = []
     for first, end, clear in pieces:
         t0, t1 = rec["t_ecg"][first], rec["t_ecg"][end - 1]
@@ -53,16 +56,18 @@ for f in sorted(glob.glob(os.path.join(DATA, "*", "**", "*.csv"), recursive=True
         fr, p = welch(heart[near], fs=fp, nperseg=int(10 * fp), nfft=int(60 * fp))
         band = (fr >= filters.HEART_HZ[0]) & (fr <= filters.HEART_HZ[1])
         snr = filters.snr_db(tp, heart, r_t[(r_t >= t0) & (r_t < t1)], np.median(rr))
-        pairs.append((60 / np.median(rr), 60 * fr[band][np.argmax(p[band])], snr))
+        pairs.append((60 / np.median(rr), 60 * fr[band][np.argmax(p[band])], snr,
+                      filters.breathing_rate(breath[near], fp)))
     if pairs:
-        e, q, n = np.array(pairs).T
+        e, q, n, b = np.array(pairs).T
         ecg_hr.extend(e)
         ppg_hr.extend(q)
         ppg_snr.extend(n)
+        breath_rate.extend(b)
         session.extend([label] * len(e))
         print("  %s: %d, %d" % (os.path.basename(f), len(pairs), np.sum(np.abs(q / e - 1) <= 0.05)))
 
-ecg_hr, ppg_hr, ppg_snr = np.array(ecg_hr), np.array(ppg_hr), np.array(ppg_snr)
+ecg_hr, ppg_hr, ppg_snr, breath_rate = np.array(ecg_hr), np.array(ppg_hr), np.array(ppg_snr), np.array(breath_rate)
 mean = (ecg_hr + ppg_hr) / 2
 diff = ppg_hr - ecg_hr
 bias, sd = np.mean(diff), np.std(diff, ddof=1)
@@ -80,10 +85,14 @@ for lo, hi in [(-40, -5), (-5, 0), (0, 5), (5, 10), (10, 40)]:
     if sel.any():
         print("PPG SNR %d to %d dB: %d pieces, PPG within 5 %% of ECG in %d" % (lo, hi, sel.sum(), right[sel].sum()))
 
+twice_breathing = ~right & (np.abs(ppg_hr / (2 * breath_rate) - 1) <= 0.05)
+print("PPG wrong: %d pieces, %d of them at twice the breathing rate" % ((~right).sum(), twice_breathing.sum()))
+
 panels.figure_style()
-fig = plt.figure(figsize=(6.3, 5.4), layout="constrained")
+fig = plt.figure(figsize=(6.3, 5.6), layout="constrained")
 top, bottom = fig.subfigures(2, 1, height_ratios=[1, 1.15])
 ax = top.subplots()
+ax.set_title("Heart rate of each 30 s piece", loc="left", pad=14)
 piece = np.arange(1, len(ecg_hr) + 1)
 ax.plot(piece, ecg_hr, "o-", color=panels.BLUE, markersize=2.5, linewidth=0.8, label="ECG")
 ax.plot(piece, ppg_hr, "o", color=panels.ORANGE, markersize=2.5, markeredgewidth=0, label="PPG")
@@ -102,6 +111,7 @@ panels.letter(ax, "A")
 
 axes = bottom.subplots(1, 2)
 ax = axes[0]
+ax.set_title("PPG against ECG", loc="left")
 ax.plot(ecg_hr, ppg_hr, "o", color=panels.INK_2, markersize=3, alpha=0.5, markeredgewidth=0)
 low, high = 200, 650
 ax.plot([low, high], [low, high], color=panels.AXIS, linewidth=0.8, zorder=0)
@@ -118,11 +128,11 @@ for y, text in [(bias, "bias %.1f" % bias), (bias + 1.96 * sd, "+1.96 SD %.0f" %
                 (bias - 1.96 * sd, "−1.96 SD %.0f" % (bias - 1.96 * sd))]:
     ax.axhline(y, color=panels.INK_2, linewidth=0.8, linestyle="-" if text.startswith("bias") else "--")
     ax.text(1.0, y, " " + text, transform=ax.get_yaxis_transform(), va="center", fontsize=6.5, color=panels.INK_2)
-ax.set_title("%.0f %% of %d pieces within 5 %% of the ECG" % (100 * within, len(diff)), loc="left",
-             fontsize=7, color=panels.INK_2)
+ax.set_title("Bland-Altman: %.0f %% of %d pieces within 5 %%" % (100 * within, len(diff)), loc="left")
 ax.set_xlabel("Mean of ECG and PPG (beats/min)")
 ax.set_ylabel("PPG − ECG (beats/min)")
 panels.letter(ax, "C")
+bottom.align_titles()
 
 panels.save(fig, __file__, "hr_agreement")
 plt.show()

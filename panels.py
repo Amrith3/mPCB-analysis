@@ -67,7 +67,14 @@ def step1_amplitude(x, fs, unit):
     frequency_axis(fs)
     plt.gca().yaxis.set_major_formatter(FuncFormatter(plain))
     plt.gca().yaxis.set_minor_formatter(NullFormatter())
-    plt.title("1. the signal: amplitude (" + unit + ")")
+    plt.title("1. FFT of the signal: amplitude (" + unit + ")")
+
+
+def power_spectrum(x, fs):
+    f, p = welch(x, fs=fs, nperseg=min(len(x), int(8 * fs)))
+    plt.semilogx(f[1:], 10 * np.log10(p[1:]))
+    frequency_axis(fs)
+    plt.title("power spectrum of the signal (dB)")
 
 
 def step2_gain(answer, fs):

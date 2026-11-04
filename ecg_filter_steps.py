@@ -27,9 +27,13 @@ for i in range(n):
     plt.subplot(n, 3, 3 * i + 2)
     if answer is None:
         panels.step1_amplitude(x, fs, "µV")
-        for f0 in filters.notch_frequencies(fs, filters.MAINS_HZ):
-            plt.axvline(f0, color="tab:red", linewidth=0.8, linestyle=":")
-        plt.title("1. amplitude (µV); red: mains")
+        plt.title("1. FFT of the raw ECG: amplitude (µV); red: mains")
+        plt.subplot(n, 3, 3 * i + 3)
+        panels.power_spectrum(x, fs)
+        plt.title("power spectrum of the raw ECG (dB); red: mains")
+        for ax in plt.gcf().axes[-2:]:
+            for f0 in filters.notch_frequencies(fs, filters.MAINS_HZ):
+                ax.axvline(f0, color="tab:red", linewidth=0.8, linestyle=":")
     else:
         panels.step2_gain(answer, fs)
         plt.subplot(n, 3, 3 * i + 3)
