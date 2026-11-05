@@ -28,6 +28,7 @@ made-up signals with a known answer and ends with "all checks passed". The recor
 | `hr_agreement.py` | PPG against ECG heart rate, Bland-Altman (`hr_agreement.pdf`) | 14: usable PPG, clear ECG, at least 20 s |
 | `checks.py` | the methods on made-up signals (printed) | 22 Oct 14:54:30 for real noise |
 | `isoflurane/` | heart rate, breathing, ECG beat and pulse against the dose; see its README | 3 runs, 14 recordings |
+| `report/figures.py` | the graphs of the results report, one per file with its own title (`report/*.png`) | `FILE`, 26 Oct, the 3 dose runs |
 
 ## Filters
 
