@@ -1,5 +1,9 @@
-"""Shared panels: signal spectrum (step 1), filter gain (step 2), before/after (step 3), averaged beat;
-and the figure style of hr_agreement.py and isoflurane/: Arial 8 pt, thin axes, no top/right box."""
+"""Plotting: the figure style and the panels the figure scripts share.
+
+The filter figures (ecg_filter_steps.py, ppg_vitals.py) build each row up in three steps:
+step 1 the signal's spectrum, step 2 the filter's gain, step 3 the spectrum before and after the
+filter. figure_style() is the style of the other figures: Arial 8 pt, thin axes, no box.
+"""
 import os
 
 import matplotlib.pyplot as plt
@@ -7,7 +11,7 @@ import numpy as np
 from matplotlib.ticker import FuncFormatter, NullFormatter
 from scipy.signal import welch
 
-import filters
+from .filters import gain_db
 
 INK = "#0b0b0b"
 INK_2 = "#52514e"
@@ -18,6 +22,7 @@ ORANGE = "#eb6834"
 
 
 def figure_style():
+    """Set the figure style for all following figures."""
     plt.rcParams.update({
         "font.family": "sans-serif", "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
         "font.size": 8, "axes.titlesize": 8, "axes.labelsize": 8,
@@ -32,22 +37,25 @@ def figure_style():
 
 
 def letter(ax, text):
+    """A bold panel letter (A, B, ...) at the top left of an axis."""
     ax.annotate(text, xy=(0, 1), xycoords="axes fraction", xytext=(-40, 0), textcoords="offset points",
                 fontsize=10, fontweight="bold", va="top")
 
 
 def save(fig, script, name):
-    """The figure as PDF and PNG, next to the script that made it."""
+    """Save the figure as PDF and PNG next to the script that made it (pass __file__ as script)."""
     folder = os.path.dirname(os.path.abspath(script))
     fig.savefig(os.path.join(folder, name + ".pdf"))
     fig.savefig(os.path.join(folder, name + ".png"))
 
 
 def plain(value, position):
+    """Tick label without trailing zeros (axis formatter)."""
     return f"{value:f}".rstrip("0").rstrip(".")
 
 
 def frequency_axis(fs):
+    """A frequency axis from 0.1 Hz to half the sampling rate, with plain tick labels."""
     plt.xlim(0.1, fs / 2)
     ticks = []
     for f in [0.1, 0.3, 1, 3, 10, 30, 100]:
@@ -62,6 +70,7 @@ def frequency_axis(fs):
 
 
 def step1_amplitude(x, fs, unit):
+    """Step 1: the amplitude of each frequency in the signal (Welch spectrum, 8 s pieces), log axes."""
     f, power = welch(x, fs=fs, nperseg=min(len(x), int(8 * fs)), scaling="spectrum")
     plt.loglog(f[1:], np.sqrt(2 * power[1:]))
     frequency_axis(fs)
@@ -71,6 +80,7 @@ def step1_amplitude(x, fs, unit):
 
 
 def power_spectrum(x, fs):
+    """The power spectrum of the signal in dB (Welch, 8 s pieces)."""
     f, p = welch(x, fs=fs, nperseg=min(len(x), int(8 * fs)))
     plt.semilogx(f[1:], 10 * np.log10(p[1:]))
     frequency_axis(fs)
@@ -78,13 +88,15 @@ def power_spectrum(x, fs):
 
 
 def step2_gain(answer, fs):
-    f, gain = filters.gain_db(answer, fs)
+    """Step 2: the filter's gain in dB at each frequency, from its impulse response (filters.gain_db)."""
+    f, gain = gain_db(answer, fs)
     plt.semilogx(f[1:], gain[1:])
     frequency_axis(fs)
     plt.title("2. the filter: gain (dB)")
 
 
 def step3_before_after(before, after, fs):
+    """Step 3: the power spectrum before (grey) and after the filter, in dB."""
     piece = min(len(after), int(8 * fs))
     f, p_before = welch(before, fs=fs, nperseg=piece)
     f, p_after = welch(after, fs=fs, nperseg=piece)
@@ -93,14 +105,3 @@ def step3_before_after(before, after, fs):
     frequency_axis(fs)
     plt.title("3. power spectrum (dB)")
     plt.legend(fontsize=7)
-
-
-def averaged(x, centres, half):
-    """Median of x around each centre, or None if fewer than 3 fit."""
-    pieces = []
-    for k in centres:
-        if k - half >= 0 and k + half <= len(x):
-            pieces.append(x[k - half:k + half])
-    if len(pieces) < 3:
-        return None
-    return np.median(pieces, axis=0)

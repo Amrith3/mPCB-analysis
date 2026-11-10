@@ -1,14 +1,13 @@
 """ECG filtering levels: raw, + 3 Hz high-pass, + 50 Hz notch, + 150 Hz notch."""
 import matplotlib.pyplot as plt
 
-import filters
-import panels
-from recording import load
+from mpcb import filters, plotting
+from mpcb.recording import Recording
 
-rec = load()
-fs = rec["fs_ecg"]
-t = rec["t_ecg"]
-levels = filters.ecg_levels(rec["ecg"], fs)
+rec = Recording()
+fs = rec.fs_ecg
+t = rec.t_ecg
+levels = filters.ecg_levels(rec.ecg, fs)
 
 start = max(t[0], min(10, t[-1] - 2))
 show = (t >= start) & (t < start + 2)
@@ -26,18 +25,18 @@ for i in range(n):
 
     plt.subplot(n, 3, 3 * i + 2)
     if answer is None:
-        panels.step1_amplitude(x, fs, "µV")
+        plotting.step1_amplitude(x, fs, "µV")
         plt.title("1. FFT of the raw ECG: amplitude (µV); red: mains")
         plt.subplot(n, 3, 3 * i + 3)
-        panels.power_spectrum(x, fs)
+        plotting.power_spectrum(x, fs)
         plt.title("power spectrum of the raw ECG (dB); red: mains")
         for ax in plt.gcf().axes[-2:]:
             for f0 in filters.notch_frequencies(fs, filters.MAINS_HZ):
                 ax.axvline(f0, color="tab:red", linewidth=0.8, linestyle=":")
     else:
-        panels.step2_gain(answer, fs)
+        plotting.step2_gain(answer, fs)
         plt.subplot(n, 3, 3 * i + 3)
-        panels.step3_before_after(levels[i - 1][1], x, fs)
+        plotting.step3_before_after(levels[i - 1][1], x, fs)
 
 plt.savefig("ecg_filter_steps.png", dpi=150)
 plt.show()

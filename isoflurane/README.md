@@ -12,7 +12,7 @@ py -3.13 isoflurane/table.py
 
 | File | What it does |
 |---|---|
-| `sessions.py` | each session's recordings on one clock, the dose from the notes, the vitals every 10 s, the averaged beat at each dose and its wave boundaries |
+| `../mpcb/sessions.py` | each session's recordings on one clock, the dose from the notes, the vitals every 10 s, the averaged beat at each dose and its wave boundaries |
 | `timeline.py` | one session over time: dose, heart rate, breathing rate, perfusion index, skin temperature (`timeline.pdf`) |
 | `doses.py` | one column per dose: the averaged ECG beat, the averaged PPG pulse, 20 s of breathing, skin temperature (`doses.pdf`) |
 | `table.py` | per dose of each run: the vitals as mean ± SD (`vitals.csv`), the intervals of the averaged beat (`ecg.csv`), the signal-to-noise ratios and heart-rate variability as median (IQR), with the floor of the heart-rate variability (`snr_hrv.csv`), and all of it with the CV and the wave sizes (`table.csv`) |

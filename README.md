@@ -1,25 +1,54 @@
 # mPCB analysis
 
-Python scripts for the ECG and PPG recorded with the mouse sensor board.
+Python code for the ECG, PPG and skin temperature recorded with the mouse sensor board: loading the
+recordings, filtering, finding heartbeats and breaths, signal quality, the isoflurane dose analysis
+and the figures of the results report.
+
+## Start here
+
+`walkthrough.ipynb` goes through the analysis step by step, from loading a recording to the
+comparison with published values. Open it in VS Code or Jupyter and run the cells from top to bottom.
 
 ```
 py -3.13 -m pip install -r requirements.txt
 py -3.13 checks.py
-py -3.13 ecg_filter_steps.py
 ```
 
 `requirements.txt` holds the versions the results were made with. `checks.py` tries the methods on
 made-up signals with a known answer and ends with "all checks passed". The recordings since 24 Sep
 2026 are in `data/`, one zip per session, unzipped on first use (22 Oct holds two mice: 30 g and
-25 g). Run the scripts from this folder; figures (PNG, PDF) and tables (CSV) are saved here.
+25 g).
 
-## Files
+## The mpcb package
 
-| File | Output | Recordings |
+The code shared by the notebook and the scripts is in `mpcb/`, one module per step:
+
+| Module | What it holds |
+|---|---|
+| `mpcb/recording.py` | `Recording`: one recording read from its CSV file (ECG in µV, PPG in nA, skin temperature, notes; the PPG on the ECG's clock), with methods to filter and measure it |
+| `mpcb/filters.py` | preprocessing: every filter and its setting |
+| `mpcb/analysis.py` | R waves and R times, heart rate, breathing rate (per window and breath by breath), averaged beat and pulse, SNR, HRV and its floor |
+| `mpcb/sessions.py` | `Session`: all recordings of one isoflurane session on one clock, the dose from the notes, the vitals every 10 s, the averaged beat at each dose and its wave boundaries |
+| `mpcb/stats.py` | mean ± SD over runs and t-tests against published values |
+| `mpcb/plotting.py` | the figure style and the panels of the step figures |
+
+Each function's description says what it does and how; `help()` shows it, e.g.
+`help(filters.ecg_highpass)`.
+
+```python
+from mpcb import Recording
+rec = Recording()                 # FILE in mpcb/recording.py: 22 Oct 14:54:30
+ecg = rec.ecg_filtered()          # 3 Hz high-pass, 50 and 150 Hz notches
+times, hr = rec.heart_rate()      # heart rate every 10 s
+times, rates = rec.breaths()      # single breaths from the PPG
+```
+
+## Scripts
+
+Run them from this folder; figures (PNG, PDF) and tables (CSV) are saved next to the script.
+
+| Script | Output | Recordings |
 |---|---|---|
-| `recording.py` | ECG in µV, PPG in nA, sampling rates; the PPG on the ECG's clock | `FILE` = 22 Oct 14:54:30 |
-| `filters.py` | every filter and setting, R waves and R times, SNR, HRV and its floor | |
-| `panels.py` | the panels of the step figures; the style of the other figures | |
 | `ecg_filter_steps.py` | the ECG stage by stage (`ecg_filter_steps.png`) | `FILE` |
 | `notch_differences.py` | the mains and ECG each notch removes (`notch_differences.png`) | `FILE` |
 | `ppg_vitals.py` | the PPG stage by stage; vitals per 30 s (`ppg_vitals.png`) | `FILE` |
@@ -29,6 +58,7 @@ made-up signals with a known answer and ends with "all checks passed". The recor
 | `checks.py` | the methods on made-up signals (printed) | 22 Oct 14:54:30 for real noise |
 | `isoflurane/` | heart rate, breathing, ECG beat and pulse against the dose; see its README | 3 runs, 14 recordings |
 | `report/figures.py` | the graphs of the results report, one per file with its own title (`report/*.png`) | `FILE`, 26 Oct, the 3 dose runs |
+| `report/statistics.py` | the report's t-tests against published values (`report/t_tests.csv`); run `isoflurane/table.py` first | the 3 dose runs |
 
 ## Filters
 

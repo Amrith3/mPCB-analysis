@@ -20,10 +20,12 @@ Saved in this folder.
 """
 import csv
 import os
+import sys
 
 import numpy as np
 
-import sessions
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the main folder
+from mpcb import sessions  # noqa: E402
 
 RUNS = [("22 Oct, 30 g", "Mouse 1 (30 g), 22 Oct"),
         ("26 Oct, 30 g", "Mouse 1 (30 g), 26 Oct"),
@@ -43,17 +45,20 @@ SIGNAL = [("ecg_snr", "ECG SNR (dB)", "%.1f"), ("ppg_snr", "PPG SNR (dB)", "%.1f
 
 
 def mean_sd(x, fmt):
+    """'mean ± SD' of the values x in the format fmt, or '-' with fewer than 3 or missing values."""
     if len(x) < 3 or not np.all(np.isfinite(x)):
         return "-"
     return (fmt + " ± " + fmt) % (np.mean(x), np.std(x, ddof=1))
 
 
 def median_iqr(v, key, start, end, fmt):
+    """'median (quartile 1 to quartile 3)' of v[key] in the last 2 min at a dose, or '-'."""
     m = sessions.steady(v, key, start, end)
     return "-" if m is None else (fmt + " (" + fmt + "–" + fmt + ")") % m
 
 
 def write(rows, name):
+    """Save the rows (a list of dicts) as a CSV file in this folder and print them as a table."""
     columns = list(rows[0].keys())
     with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), name), "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, columns)

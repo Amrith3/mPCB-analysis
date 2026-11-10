@@ -3,28 +3,27 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import find_peaks, welch
 
-import filters
-import panels
-from recording import load
+from mpcb import analysis, filters, plotting
+from mpcb.recording import Recording
 
 WINDOW_S = 30
 
-rec = load()
-if "ir_nA" not in rec:
+rec = Recording()
+if not rec.has_ppg:
     raise SystemExit("No usable PPG in this recording.")
-fs = rec["fs_ppg"]
-t = rec["t_ppg"]
+fs = rec.fs_ppg
+t = rec.t_ppg
 if t[-1] - t[0] < WINDOW_S:
     raise SystemExit("The PPG is shorter than one window of " + str(WINDOW_S) + " s.")
-raw = rec["ir_nA"]
+raw = rec.ir_nA
 ppg = filters.ppg_lowpass(raw, fs)
 heart = filters.heart_band(ppg, fs)
 breathing = filters.breathing_band(ppg, fs)
 
-r = filters.r_waves(rec["ecg"], rec["fs_ecg"])
+r = analysis.r_waves(rec.ecg, rec.fs_ecg)
 if len(r) < 10:
     raise SystemExit("Fewer than 10 R waves in the ECG: the pulse cannot be lined up on heartbeats.")
-r_times = rec["t_ecg"][r]
+r_times = rec.t_ecg[r]
 pulses = np.searchsorted(t, r_times)
 pulse_half = int(0.15 * fs)
 
@@ -50,14 +49,14 @@ for start in np.arange(t[0], t[-1] - WINDOW_S, WINDOW_S):
     p_band = p[band]
     ppg_rate.append(60 * f_band[np.argmax(p_band)])
 
-    rate = filters.breathing_rate(breathing[inside], fs)
+    rate = analysis.breathing_rate(breathing[inside], fs)
     breathing_per_minute.append(rate)
     if not np.isnan(rate):
         peaks, _ = find_peaks(breathing[inside], distance=int(0.6 * fs * 60 / rate))
         first = np.flatnonzero(inside)[0]
         breaths.extend(first + peaks)
 
-    pulse = panels.averaged(heart, pulses[beats_inside], pulse_half)
+    pulse = analysis.averaged(heart, pulses[beats_inside], pulse_half)
     if pulse is None:
         perfusion.append(np.nan)
     else:
@@ -66,7 +65,7 @@ for start in np.arange(t[0], t[-1] - WINDOW_S, WINDOW_S):
 ecg_rate = np.array(ecg_rate)
 ppg_rate = np.array(ppg_rate)
 agree = np.abs(ppg_rate / ecg_rate - 1) <= 0.05
-pulse = panels.averaged(heart, pulses, pulse_half)
+pulse = analysis.averaged(heart, pulses, pulse_half)
 print("IR light level:", round(np.mean(raw)), "nA")
 print("heart rate (median of the windows): ECG", round(np.nanmedian(ecg_rate)), "per minute, PPG",
       round(np.median(ppg_rate)), "per minute; the PPG is within 5 % of the ECG in", np.sum(agree), "of",
@@ -106,16 +105,16 @@ for i in range(4):
 
     plt.subplot(5, 4, 4 * i + 2)
     if answer is None:
-        panels.step1_amplitude(x, fs, "nA")
+        plotting.step1_amplitude(x, fs, "nA")
         plt.subplot(5, 4, 4 * i + 3)
-        panels.power_spectrum(x, fs)
+        plotting.power_spectrum(x, fs)
     else:
-        panels.step2_gain(answer, fs)
+        plotting.step2_gain(answer, fs)
         plt.subplot(5, 4, 4 * i + 3)
-        panels.step3_before_after(before, x, fs)
+        plotting.step3_before_after(before, x, fs)
 
     plt.subplot(5, 4, 4 * i + 4)
-    average = panels.averaged(x, centres, half)
+    average = analysis.averaged(x, centres, half)
     if average is not None:
         plt.plot(1000 * np.arange(-half, half) / fs, average - np.median(average))
     plt.title(averaged_name[i])

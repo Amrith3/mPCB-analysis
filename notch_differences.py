@@ -7,16 +7,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import welch
 
-import filters
-import panels
-from recording import load
+from mpcb import analysis, filters
+from mpcb.recording import Recording
 
-rec = load()
-fs = rec["fs_ecg"]
-t = rec["t_ecg"]
-recorded = filters.ecg_highpass(rec["ecg"], fs)
-clean = filters.ecg_highpass(filters.mains_fitted_out(rec["ecg"], fs), fs)
-r = filters.r_waves(rec["ecg"], fs)
+rec = Recording()
+fs = rec.fs_ecg
+t = rec.t_ecg
+recorded = filters.ecg_highpass(rec.ecg, fs)
+clean = filters.ecg_highpass(filters.mains_fitted_out(rec.ecg, fs), fs)
+r = analysis.r_waves(rec.ecg, fs)
 if len(r) < 10:
     raise SystemExit("Fewer than 10 R waves found: the averaged beats cannot be made.")
 
@@ -27,15 +26,17 @@ tried = filters.notch_frequencies(fs, filters.MAINS_HZ)
 
 
 def qrs(beat):
+    """QRS size of an averaged beat (µV): highest minus lowest point around R."""
     return np.max(beat[qrs_part]) - np.min(beat[qrs_part])
 
 
 def spectrum_db(x):
+    """Frequencies and power spectrum (dB) of x (Welch, 8 s pieces)."""
     f, p = welch(x, fs=fs, nperseg=min(len(x), int(8 * fs)))
     return f, 10 * np.log10(p + 1e-20)
 
 
-beat_before = panels.averaged(clean, r, half)
+beat_before = analysis.averaged(clean, r, half)
 start = max(t[0], min(10, t[-1] - 0.5))
 show = (t >= start) & (t < start + 0.5)
 n = len(tried)
@@ -46,7 +47,7 @@ for i in range(n):
     after = filters.notch(clean, fs, f0)
     removed = clean - after
     mains = recorded - filters.notch(recorded, fs, f0) - removed
-    beat_after = panels.averaged(after, r, half)
+    beat_after = analysis.averaged(after, r, half)
     change = 100 * (qrs(beat_after) / qrs(beat_before) - 1)
     if f0 in filters.NOTCH_HZ:
         title = str(f0) + " Hz notch (used)"
@@ -92,7 +93,7 @@ for i in range(n):
     plt.legend(fontsize=7)
 
 used = filters.notches(clean, fs)
-beat_used = panels.averaged(used, r, half)
+beat_used = analysis.averaged(used, r, half)
 print("the notches used together", filters.notch_frequencies(fs), "Hz: QRS", round(100 * (qrs(beat_used) / qrs(beat_before) - 1), 1), "%")
 
 plt.savefig("notch_differences.png", dpi=150)

@@ -18,19 +18,21 @@ import re
 import numpy as np
 from scipy.signal import welch
 
-import filters
-from recording import DATA, load, unzip
+from mpcb import analysis, filters
+from mpcb.recording import DATA, Recording, unzip
 
 for z in glob.glob(os.path.join(DATA, "*.zip")):
     unzip(os.path.basename(z)[:-4])
 
 
 def missing(t, fs):
+    """Number of samples missing in gaps: steps between time stamps longer than 1.5 samples."""
     steps = np.diff(t) * fs
     return int(np.sum(np.round(steps[steps > 1.5]) - 1))
 
 
 def median_iqr(x, fmt):
+    """'median (quartile 1 to quartile 3)' of the values without nan, or '-'."""
     x = np.array(x, dtype=float)
     x = x[~np.isnan(x)]
     if len(x) == 0:
@@ -44,31 +46,31 @@ for f in sorted(glob.glob(os.path.join(DATA, "*", "**", "*.csv"), recursive=True
     pieces = []
     said = io.StringIO()
     with contextlib.redirect_stdout(said):
-        rec = load(f)
-        r = filters.r_waves(rec["ecg"], rec["fs_ecg"], pieces)
-    fs = rec["fs_ecg"]
-    ecg = filters.ecg_highpass(rec["ecg"], fs)
+        rec = Recording(f)
+        r = analysis.r_waves(rec.ecg, rec.fs_ecg, pieces)
+    fs = rec.fs_ecg
+    ecg = filters.ecg_highpass(rec.ecg, fs)
     used = filters.notches(ecg, fs)
-    r_t = filters.r_times(rec["ecg"], rec["t_ecg"], fs, r)
-    if "ir_nA" in rec:
-        fp = rec["fs_ppg"]
-        heart = filters.heart_band(filters.ppg_lowpass(rec["ir_nA"], fp), fp)
+    r_t = analysis.r_times(rec.ecg, rec.t_ecg, fs, r)
+    if rec.has_ppg:
+        fp = rec.fs_ppg
+        heart = filters.heart_band(filters.ppg_lowpass(rec.ir_nA, fp), fp)
     snr_ecg, snr_ppg, sdnn, rmssd = [], [], [], []
     for first, end, clear in pieces:
         inside = (r >= first) & (r < end) & ~np.isnan(r_t)
         if not clear or np.sum(inside) < 10:
             continue
         rr = np.diff(r_t[inside])
-        snr_ecg.append(filters.snr_db(rec["t_ecg"], used, r_t[inside], np.median(rr)))
-        if "ir_nA" in rec:
-            snr_ppg.append(filters.snr_db(rec["t_ppg"], heart, r_t[inside], np.median(rr)))
-        hrv = filters.hrv(rr, fs)
+        snr_ecg.append(analysis.snr_db(rec.t_ecg, used, r_t[inside], np.median(rr)))
+        if rec.has_ppg:
+            snr_ppg.append(analysis.snr_db(rec.t_ppg, heart, r_t[inside], np.median(rr)))
+        hrv = analysis.hrv(rr, fs)
         sdnn.append(hrv[0])
         rmssd.append(hrv[1])
     fr, p = welch(ecg, fs=fs, nperseg=min(len(ecg), int(8 * fs)))
     total = p[fr >= filters.ECG_HP_HZ].sum()
     mains = sum(p[np.abs(fr - f0) <= 1].sum() for f0 in filters.notch_frequencies(fs, filters.MAINS_HZ))
-    fr, p = welch(rec["ecg"], fs=fs, nperseg=min(len(ecg), int(32 * fs)))
+    fr, p = welch(rec.ecg, fs=fs, nperseg=min(len(ecg), int(32 * fs)))
     near = (fr > 48) & (fr < 52)
     f_mains = fr[near][np.argmax(p[near])]
     reason = [line for line in said.getvalue().splitlines() if line.startswith("PPG not used")]
@@ -76,19 +78,19 @@ for f in sorted(glob.glob(os.path.join(DATA, "*", "**", "*.csv"), recursive=True
     rows.append({
         "Recording": "%s.%s %s:%s:%s" % (name[6:8], name[4:6], name[9:11], name[11:13], name[13:15]),
         "Folder": os.path.relpath(os.path.dirname(f), DATA),
-        "Duration (s)": "%.0f" % (len(rec["ecg"]) / fs),
+        "Duration (s)": "%.0f" % (len(rec.ecg) / fs),
         "Clear beat (pieces)": "%d of %d" % (sum(c for _, _, c in pieces), len(pieces)),
         "Mains (% of ECG power)": "%.1f" % (100 * mains / total),
-        "ECG missing (samples)": missing(rec["t_ecg"], fs),
-        "PPG missing (samples)": missing(rec["t_ppg"], rec["fs_ppg"]) if "t_ppg" in rec else "-",
+        "ECG missing (samples)": missing(rec.t_ecg, fs),
+        "PPG missing (samples)": missing(rec.t_ppg, rec.fs_ppg) if rec.has_ppg else "-",
         "Mains at (Hz)": "%.2f" % f_mains,
         "Lost without a gap (%)": "%.1f" % (100 * (1 - 50 / f_mains)) if f_mains > 50.2 else "0",
-        "ECG clipped (%)": "%.2f" % (100 * np.mean(np.abs(rec["ecg_raw"]) >= 0.99 * 131071)),
+        "ECG clipped (%)": "%.2f" % (100 * np.mean(np.abs(rec.ecg_raw) >= 0.99 * 131071)),
         "ECG SNR (dB)": median_iqr(snr_ecg, "%.1f"),
         "PPG SNR (dB)": median_iqr(snr_ppg, "%.1f"),
         "SDNN (ms)": median_iqr(sdnn, "%.2f"),
         "RMSSD (ms)": median_iqr(rmssd, "%.2f"),
-        "PPG": "used (IR %.0f nA)" % np.mean(rec["ir_nA"]) if "ir_nA" in rec else reason[0][len("PPG not used: "):] if reason else "not used",
+        "PPG": "used (IR %.0f nA)" % np.mean(rec.ir_nA) if rec.has_ppg else reason[0][len("PPG not used: "):] if reason else "not used",
     })
 
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "quality.csv"), "w", newline="", encoding="utf-8-sig") as out:

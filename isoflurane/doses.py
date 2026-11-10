@@ -6,11 +6,14 @@ from sessions.ecg_points, the same ones table.py measures. Only R is marked: a m
 with R (no Q wave), and the dip before R is the ECG chip's filter ringing.
 Breathing: the PPG breathing band, 20 s around the last clear breathing value at that dose.
 """
+import os
+import sys
+
 import matplotlib.pyplot as plt
 import numpy as np
 
-import sessions
-import panels  # after sessions, which puts the main folder on the path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the main folder
+from mpcb import plotting, sessions  # noqa: E402
 
 SESSION = "26 Oct, 30 g"
 BREATH_S = 20
@@ -20,31 +23,32 @@ v = d["v"]
 
 
 def note(ax, text):
-    ax.text(0.03, 0.97, text, transform=ax.transAxes, ha="left", va="top", fontsize=6.5, color=panels.INK_2)
+    """Small grey text at the top left inside an axis."""
+    ax.text(0.03, 0.97, text, transform=ax.transAxes, ha="left", va="top", fontsize=6.5, color=plotting.INK_2)
 
 
-panels.figure_style()
+plotting.figure_style()
 n = len(d["doses"])
 fig, axes = plt.subplots(4, n, figsize=(6.3, 7.4), sharex="row", sharey="row", layout="constrained",
                          squeeze=False)
 for col, c in enumerate(d["doses"]):
     ax = axes[0, col]
     points = sessions.ecg_points(d["t_ecg"], c["beat"])
-    ax.plot(d["t_ecg"], c["beat"] - points["base"], color=panels.BLUE)
+    ax.plot(d["t_ecg"], c["beat"] - points["base"], color=plotting.BLUE)
     x, y = points["R"]
-    ax.plot(x, y, "o", color=panels.INK, markersize=2.5)
+    ax.plot(x, y, "o", color=plotting.INK, markersize=2.5)
     ax.annotate("R %.0f" % y, (x, y), xytext=(-4, 2), textcoords="offset points", ha="right", fontsize=6.5,
-                color=panels.INK_2)
+                color=plotting.INK_2)
     ax.set_title("%g %%\n%.0f beats/min" % (c["level"], 60000 / c["rr_ms"]))
     ax.set_xlabel("Time from R (ms)")
 
     ax = axes[1, col]
     pulse = c["pulse"] - np.median(c["pulse"])
-    ax.plot(d["t_ppg"], pulse, color=panels.BLUE)
+    ax.plot(d["t_ppg"], pulse, color=plotting.BLUE)
     after = d["t_ppg"] >= 0
     x, y = d["t_ppg"][after][np.argmax(pulse[after])], np.max(pulse[after])
-    ax.plot(x, y, "o", color=panels.INK, markersize=2.5)
-    ax.annotate("%.0f ms" % x, (x, y), xytext=(4, 2), textcoords="offset points", fontsize=6.5, color=panels.INK_2)
+    ax.plot(x, y, "o", color=plotting.INK, markersize=2.5)
+    ax.annotate("%.0f ms" % x, (x, y), xytext=(4, 2), textcoords="offset points", fontsize=6.5, color=plotting.INK_2)
     ax.set_xlabel("Time from R (ms)")
 
     ax = axes[2, col]
@@ -52,7 +56,7 @@ for col, c in enumerate(d["doses"]):
     clear = idx[~np.isnan(v["breathing"][idx])]
     middle = v["t"][clear[-1] if len(clear) else idx[-1]]
     near = (d["t_breath"] >= middle - BREATH_S / 2) & (d["t_breath"] < middle + BREATH_S / 2)
-    ax.plot(d["t_breath"][near] - d["t_breath"][near][0], d["breath"][near], color=panels.BLUE, linewidth=0.8)
+    ax.plot(d["t_breath"][near] - d["t_breath"][near][0], d["breath"][near], color=plotting.BLUE, linewidth=0.8)
     rate = sessions.steady(v, "breathing", c["start"], c["end"])
     note(ax, "-" if rate is None else "%.0f breaths/min" % rate[0])
     ax.set_xlabel("Time (s)")
@@ -64,11 +68,11 @@ for col, c in enumerate(d["doses"]):
     count = np.bincount(second)
     have = count > 0
     ax.plot(np.flatnonzero(have) / 60, (np.bincount(second, d["temp"][near]) / np.maximum(count, 1))[have],
-            color=panels.BLUE)                      # 1 s averages
+            color=plotting.BLUE)                      # 1 s averages
     note(ax, "%.1f °C" % np.mean(d["temp"][near]))
     ax.set_xlabel("Time (min)")
     for ax in axes[:2, col]:
-        ax.axvline(0, color=panels.AXIS, linewidth=0.5, zorder=0)
+        ax.axvline(0, color=plotting.AXIS, linewidth=0.5, zorder=0)
 
 axes[0, 0].margins(y=0.12)
 axes[2, 0].margins(y=0.2)
@@ -78,8 +82,8 @@ axes[1, 0].set_ylabel("PPG pulse\n(% of light level)")
 axes[2, 0].set_ylabel("Breathing\n(% of light level)")
 axes[3, 0].set_ylabel("Skin temperature\n(°C)")
 for row, text in enumerate("ABCD"):
-    panels.letter(axes[row, 0], text)
+    plotting.letter(axes[row, 0], text)
 fig.align_ylabels(axes[:, 0])
 
-panels.save(fig, __file__, "doses")
+plotting.save(fig, __file__, "doses")
 plt.show()

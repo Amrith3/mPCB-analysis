@@ -1,22 +1,27 @@
-"""Isoflurane sessions: all recordings of one session on one clock, the dose from the notes,
-the vitals, signal-to-noise ratios and heart-rate variability every 10 s, and the averaged beat
-at each dose."""
+"""Isoflurane sessions: all recordings of one session on one clock, the dose from the notes, the
+vitals every 10 s, and the averaged beat and pulse at each dose.
+
+    s = Session("26 Oct, 30 g")
+    v = s.vitals()              # dict of arrays: time, dose, heart rate, breathing, ... every 10 s
+    s.doses()                   # [(dose %, start s, end s)] from the notes
+    s.dose_values("hr")         # {1: ..., 2: ..., 4: ...} mean of the last 2 min at each dose
+
+The module functions (vitals, epochs, dose_averages, ...) take the session name and are used by
+the scripts in isoflurane/.
+"""
 import contextlib
 import glob
 import io
 import os
 import re
-import sys
 from datetime import datetime
 
 import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.signal import welch
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # filters, panels, recording
-import filters  # noqa: E402
-import panels  # noqa: E402
-from recording import DATA, load, unzip  # noqa: E402
+from . import analysis, filters
+from .recording import DATA, Recording, unzip
 
 # name: (zip in data/, folder inside it)
 SESSIONS = {
@@ -26,8 +31,8 @@ SESSIONS = {
     "22 Oct, 25 g": ("mouse_isoflurane_20261022", "mouse_25g"),
     "26 Oct, 30 g": ("mouse_isoflurane_20261026", "mouse_30g"),
 }
-STEP_S = 10
-WINDOW_S = 30
+STEP_S = 10       # one value every 10 s
+WINDOW_S = 30     # PPG values, SNR and HRV from the 30 s around it
 
 
 def files(name):
@@ -38,14 +43,19 @@ def files(name):
 
 
 def started(file):
+    """Start time of a recording, from the date and time in its file name."""
     return datetime.strptime(re.search(r"\d{8}_\d{6}", file).group(), "%Y%m%d_%H%M%S")
 
 
 def dose_in(note):
-    """The isoflurane % a note sets; nan if it is about isoflurane but gives no level; None if
-    it is not about isoflurane."""
+    """The isoflurane % a note sets: the number after "to" or "at" ("iso to 4" is 4 %).
+
+    nan if the note is about isoflurane but gives no level ("gradually decreasing"), so the dose
+    is unknown from then on; None if the note is not about isoflurane. Numbers above 5 are not
+    doses (a vaporizer goes up to 5 %).
+    """
     level = re.search(r"\b(?:to|at)\s*(\d+(?:\.\d+)?)", note)
-    if level and float(level.group(1)) <= 5:     # a vaporizer goes up to 5 %
+    if level and float(level.group(1)) <= 5:
         return float(level.group(1))
     if re.search(r"iso|anes", note):
         return np.nan
@@ -53,38 +63,50 @@ def dose_in(note):
 
 
 def vitals(name):
-    """Every 10 s of the session: time (s from the first recording's start), dose (%), heart rate
-    (ECG), temperature (°C); from the 30 s around it: breathing rate and perfusion index (PPG),
-    signal-to-noise ratio of the ECG and of the PPG heart band (dB), SDNN and RMSSD (ms)."""
+    """The session every 10 s, as a dict of arrays.
+
+    Every 10 s: time ("t", s from the first recording's start), dose ("dose", %), heart rate ("hr",
+    from the ECG's R-R intervals, analysis.window_heart_rate), skin temperature ("temp", median, °C).
+    From the 30 s around it: breathing rate ("breathing", analysis.breathing_rate), PPG heart rate
+    ("ppg_hr", strongest frequency of the heart band), perfusion index ("pi", size of the pulse
+    averaged on the R waves in % of the light), SNR of the ECG and of the PPG ("ecg_snr", "ppg_snr",
+    dB) and HRV ("sdnn", "rmssd", ms).
+
+    Values are removed where they cannot be trusted:
+    - heart rate, SNR and HRV where the ECG's noise is more than 3 x, or its mains more than 5 x,
+      the session's usual (movement, the heating pad on AC); "clean" marks the rest;
+    - breathing more than 30 % from the median of the minute around it (two breaths taken for one);
+    - perfusion index where the PPG's heart rate is not within 5 % of the ECG's.
+    Also "changes" (time, dose) from the notes and "end" (s).
+    """
     first = started(files(name)[0])
     v = {k: [] for k in ["t", "hr", "noise", "mains", "breathing", "ppg_hr", "pi", "temp",
                          "ecg_snr", "ppg_snr", "sdnn", "rmssd"]}
     changes = []
     for f in files(name):
         with contextlib.redirect_stdout(io.StringIO()):
-            rec = load(f)
-            r = filters.r_waves(rec["ecg"], rec["fs_ecg"])
+            rec = Recording(f)
+            r = analysis.r_waves(rec.ecg, rec.fs_ecg)
         offset = (started(f) - first).total_seconds()
-        for time, note in rec["notes"]:
+        for time, note in rec.notes:
             level = dose_in(note)
             if level is not None:
                 changes.append((offset + time, level))
 
-        fs = rec["fs_ecg"]
-        t = rec["t_ecg"]
-        hp = filters.ecg_highpass(rec["ecg"], fs)
+        fs = rec.fs_ecg
+        t = rec.t_ecg
+        hp = filters.ecg_highpass(rec.ecg, fs)
         notched = filters.notches(hp, fs, filters.MAINS_HZ)
         used = filters.notches(hp, fs)
-        r_t = filters.r_times(rec["ecg"], t, fs, r)
+        r_t = analysis.r_times(rec.ecg, t, fs, r)
         matched = ~np.isnan(r_t)
         r_times = t[r]
         rr = np.diff(r_times)
         rr_t = r_times[1:]
-        has_ppg = "ir_nA" in rec
-        if has_ppg:
-            fp = rec["fs_ppg"]
-            tp = rec["t_ppg"]
-            ppg = filters.ppg_lowpass(rec["ir_nA"], fp)
+        if rec.has_ppg:
+            fp = rec.fs_ppg
+            tp = rec.t_ppg
+            ppg = filters.ppg_lowpass(rec.ir_nA, fp)
             heart = filters.heart_band(ppg, fp)
             breath = filters.breathing_band(ppg, fp)
             pulses = np.searchsorted(tp, r_times)
@@ -94,50 +116,42 @@ def vitals(name):
             v["t"].append(offset + s + STEP_S / 2)
             v["noise"].append(np.std(notched[inside]))
             v["mains"].append(np.std(hp[inside] - notched[inside]))
-            beats = rr[(rr_t >= s) & (rr_t < s + STEP_S)]
-            beats = beats[(beats >= 0.08) & (beats <= 0.30)]             # 200-750 per minute, as r_waves searches
-            if len(beats) >= 5:
-                beats = beats[np.abs(beats / np.median(beats) - 1) < 0.3]   # drop missed and extra beats
-                v["hr"].append(60 / np.mean(beats))
-            else:
-                v["hr"].append(np.nan)
-            warm = (rec["t_temp"] >= s) & (rec["t_temp"] < s + STEP_S)
-            v["temp"].append(np.median(rec["temp_c"][warm]) if warm.any() else np.nan)
+            v["hr"].append(analysis.window_heart_rate(rr[(rr_t >= s) & (rr_t < s + STEP_S)]))
+            warm = (rec.t_temp >= s) & (rec.t_temp < s + STEP_S)
+            v["temp"].append(np.median(rec.temp_c[warm]) if warm.any() else np.nan)
 
             middle = s + STEP_S / 2
             whole = middle - WINDOW_S / 2 >= 0 and middle + WINDOW_S / 2 <= t[-1]
             beat_t = r_t[matched & (r_t >= middle - WINDOW_S / 2) & (r_t < middle + WINDOW_S / 2)]
             period = np.median(np.diff(beat_t)) if len(beat_t) >= 10 else np.nan
             if whole and len(beat_t) >= 10:
-                v["ecg_snr"].append(filters.snr_db(t, used, beat_t, period))
-                sdnn, rmssd = filters.hrv(np.diff(beat_t), fs)
+                v["ecg_snr"].append(analysis.snr_db(t, used, beat_t, period))
+                sdnn, rmssd = analysis.hrv(np.diff(beat_t), fs)
             else:
                 v["ecg_snr"].append(np.nan)
                 sdnn = rmssd = np.nan
             v["sdnn"].append(sdnn)
             v["rmssd"].append(rmssd)
-            if not has_ppg or middle - WINDOW_S / 2 < 0 or middle + WINDOW_S / 2 > tp[-1]:
+            if not rec.has_ppg or middle - WINDOW_S / 2 < 0 or middle + WINDOW_S / 2 > tp[-1]:
                 v["breathing"].append(np.nan)
                 v["ppg_hr"].append(np.nan)
                 v["pi"].append(np.nan)
                 v["ppg_snr"].append(np.nan)
                 continue
             near = (tp >= middle - WINDOW_S / 2) & (tp < middle + WINDOW_S / 2)
-            v["breathing"].append(filters.breathing_rate(breath[near], fp))
+            v["breathing"].append(analysis.breathing_rate(breath[near], fp))
             fr, p = welch(heart[near], fs=fp, nperseg=int(10 * fp), nfft=int(WINDOW_S * fp))
             band = (fr >= filters.HEART_HZ[0]) & (fr <= filters.HEART_HZ[1])
             v["ppg_hr"].append(60 * fr[band][np.argmax(p[band])])
             in_window = (r_times >= middle - WINDOW_S / 2) & (r_times < middle + WINDOW_S / 2)
-            pulse = panels.averaged(heart, pulses[in_window], int(0.15 * fp))
+            pulse = analysis.averaged(heart, pulses[in_window], int(0.15 * fp))
             v["pi"].append(np.nan if pulse is None else 100 * np.ptp(pulse) / np.mean(ppg[near]))
-            v["ppg_snr"].append(filters.snr_db(tp, heart, beat_t, period) if len(beat_t) >= 10 else np.nan)
+            v["ppg_snr"].append(analysis.snr_db(tp, heart, beat_t, period) if len(beat_t) >= 10 else np.nan)
 
     v = {k: np.array(x) for k, x in v.items()}
-    # ECG noise or mains far above the session's usual (movement, heating pad) -> no heart rate there
     v["clean"] = (v["noise"] <= 3 * np.median(v["noise"])) & (v["mains"] <= 5 * np.median(v["mains"]))
     for key in ["hr", "ecg_snr", "ppg_snr", "sdnn", "rmssd"]:
         v[key][~v["clean"]] = np.nan
-    # breathing more than 30 % from the median of the minute around it: two breaths taken for one
     b = v["breathing"]
     around = np.full(len(b), np.nan)
     for i in range(len(b)):
@@ -146,7 +160,6 @@ def vitals(name):
         if len(near) >= 3:
             around[i] = np.median(near)
     b[np.abs(b / around - 1) > 0.3] = np.nan
-    # the PPG pulse counts only where its rate matches the ECG's
     v["pi"][~(np.abs(v["ppg_hr"] / v["hr"] - 1) <= 0.05)] = np.nan
     v["changes"] = sorted(changes)
     v["end"] = v["t"][-1] + STEP_S / 2
@@ -155,6 +168,7 @@ def vitals(name):
 
 
 def dose_at(changes, time):
+    """The dose at a time, from the (time, dose) changes: the last change before it."""
     level = np.nan
     for when, value in changes:
         if when <= time:
@@ -163,13 +177,14 @@ def dose_at(changes, time):
 
 
 def epochs(v):
-    """(dose, start, end) for each stretch at one dose, from the dose notes."""
+    """(dose, start, end) for each stretch at one dose, from the dose notes; a note repeating the
+    dose before it continues the same stretch."""
     out = []
     for i, (when, level) in enumerate(v["changes"]):
         end = v["changes"][i + 1][0] if i + 1 < len(v["changes"]) else v["end"]
         if np.isnan(level) or end <= when:
             continue
-        if out and out[-1][0] == level and out[-1][2] == when:   # a note repeating the same level
+        if out and out[-1][0] == level and out[-1][2] == when:
             out[-1] = (level, out[-1][1], end)
         else:
             out.append((level, when, end))
@@ -184,8 +199,8 @@ def last_values(v, key, start, end, last_s=120):
 
 
 def steady(v, key, start, end):
-    """Median and quartiles of v[key] in the last 2 min recorded at one dose, or None with
-    fewer than 3 values."""
+    """Median and quartiles of v[key] in the last 2 min recorded at one dose, or None with fewer
+    than 3 values."""
     x = last_values(v, key, start, end)
     if len(x) < 3:
         return None
@@ -193,8 +208,8 @@ def steady(v, key, start, end):
 
 
 def with_gaps(v, key, longest_s=60):
-    """Minutes and the values of v[key], joined where they are at most 1 min apart and broken
-    (a nan) where more is missing."""
+    """Minutes and the values of v[key] for a line plot: joined where they are at most 1 min apart,
+    broken (a nan) where more is missing."""
     known = ~np.isnan(v[key])
     t = v["t"][known]
     y = v[key][known]
@@ -209,7 +224,7 @@ def dose_averages(name, ecg_ms=(-100, 60), ppg_ms=(-50, 150), shift_ms=12):
     ECG: mains fitted out (a notch rings after the QRS), 3 Hz high-pass, median of the beats. Each
     beat is shifted (at most shift_ms) so its QRS matches the first dose's average best, because
     isoflurane makes the J wave taller than the R wave and the R-wave mark can land on either.
-    The odd and the even beats are also averaged on their own, to check a measurement is repeatable.
+    The odd and the even beats are also averaged on their own, to check a measurement repeats.
     PPG pulse: the heart band in % of the light level, read every 2 ms with the same shift.
     Breathing: the PPG breathing band in % of the light level.
     Also the raw ECG of those 2 min (time, µV, sampling rate), for the HRV floor.
@@ -227,33 +242,33 @@ def dose_averages(name, ecg_ms=(-100, 60), ppg_ms=(-50, 150), shift_ms=12):
     out = {"v": v, "t_ppg": t_ppg, "t_breath": [], "breath": [], "t_temp": [], "temp": [], "doses": []}
     for f in files(name):
         with contextlib.redirect_stdout(io.StringIO()):
-            rec = load(f)
-            r = filters.r_waves(rec["ecg"], rec["fs_ecg"])
-        if "ir_nA" not in rec:
+            rec = Recording(f)
+            r = analysis.r_waves(rec.ecg, rec.fs_ecg)
+        if not rec.has_ppg:
             raise SystemExit(os.path.basename(f) + " has no usable PPG, so the pulse and breathing cannot be averaged.")
         offset = (started(f) - first).total_seconds()
-        fs = rec["fs_ecg"]
-        ecg = filters.ecg_highpass(filters.mains_fitted_out(rec["ecg"], fs), fs)
+        fs = rec.fs_ecg
+        ecg = filters.ecg_highpass(filters.mains_fitted_out(rec.ecg, fs), fs)
         m = int(shift_ms * fs / 1000)
         a, b = int(ecg_ms[0] * fs / 1000) - m, int(ecg_ms[1] * fs / 1000) + m
-        light = filters.ppg_lowpass(rec["ir_nA"], rec["fs_ppg"])
-        ppg.append((CubicSpline(rec["t_ppg"], filters.heart_band(light, rec["fs_ppg"])),
-                    CubicSpline(rec["t_ppg"], light), rec["t_ppg"][0], rec["t_ppg"][-1]))
-        out["t_breath"].append(offset + rec["t_ppg"])
-        out["breath"].append(100 * filters.breathing_band(light, rec["fs_ppg"]) / np.mean(light))
-        out["t_temp"].append(offset + rec["t_temp"])
-        out["temp"].append(rec["temp_c"])
+        light = filters.ppg_lowpass(rec.ir_nA, rec.fs_ppg)
+        ppg.append((CubicSpline(rec.t_ppg, filters.heart_band(light, rec.fs_ppg)),
+                    CubicSpline(rec.t_ppg, light), rec.t_ppg[0], rec.t_ppg[-1]))
+        out["t_breath"].append(offset + rec.t_ppg)
+        out["breath"].append(100 * filters.breathing_band(light, rec.fs_ppg) / np.mean(light))
+        out["t_temp"].append(offset + rec.t_temp)
+        out["temp"].append(rec.temp_c)
         for i, w in enumerate(wins):
-            inside = (rec["t_ecg"] >= w[0] - offset - STEP_S / 2) & (rec["t_ecg"] < w[-1] - offset + STEP_S / 2) if len(w) else []
+            inside = (rec.t_ecg >= w[0] - offset - STEP_S / 2) & (rec.t_ecg < w[-1] - offset + STEP_S / 2) if len(w) else []
             if np.sum(inside) > (len(raw[i][0]) if raw[i] else 0):
-                raw[i] = (rec["t_ecg"][inside], rec["ecg"][inside], fs)
+                raw[i] = (rec.t_ecg[inside], rec.ecg[inside], fs)
         for j in range(len(r) - 1):
             k = r[j]
-            when = offset + rec["t_ecg"][k]
+            when = offset + rec.t_ecg[k]
             for i, w in enumerate(wins):
                 if len(w) and np.min(np.abs(w - when)) < STEP_S / 2 and k + a >= 0 and k + b <= len(ecg):
-                    pieces[i].append((ecg[k + a:k + b], rec["t_ecg"][k], len(ppg) - 1))
-                    rr[i].append(rec["t_ecg"][r[j + 1]] - rec["t_ecg"][k])
+                    pieces[i].append((ecg[k + a:k + b], rec.t_ecg[k], len(ppg) - 1))
+                    rr[i].append(rec.t_ecg[r[j + 1]] - rec.t_ecg[k])
     for key in ["t_breath", "breath", "t_temp", "temp"]:
         out[key] = np.concatenate(out[key])
 
@@ -282,14 +297,15 @@ def dose_averages(name, ecg_ms=(-100, 60), ppg_ms=(-50, 150), shift_ms=12):
 
 
 def ecg_points(t_ms, beat, k=0.15):
-    """The wave boundaries and sizes on an averaged beat, as Merentie et al. (2015) find them: from
-    the slope, a boundary is where it falls below k x the steepest slope of that wave.
+    """The wave boundaries and sizes on an averaged beat, as Merentie et al. (2015) find them.
 
+    How: the beat is interpolated to 8192 points per second (cubic spline) and its slope is taken.
+    A wave starts or ends where the slope falls below k x the steepest slope of that wave.
     QRS onset: the start of the R upstroke (the dip before R is the chip's filter ringing, not a Q
     wave). QRS end: halfway between the S and J peaks. QRSp end: the J wave back at the baseline.
     Baseline: the level at P onset. Times in ms from R, sizes in µV from the baseline.
     """
-    t = np.arange(t_ms[0], t_ms[-1], 1000 / 8192)            # 8192 points per second, between samples
+    t = np.arange(t_ms[0], t_ms[-1], 1000 / 8192)
     y = CubicSpline(t_ms, beat)(t)
     d = np.gradient(y, t)
 
@@ -332,5 +348,57 @@ def hrv_floor(c):
     """SDNN and RMSSD (ms) a perfectly regular heart would read in one dose's last 2 min of ECG."""
     t, ecg, fs = c["raw"]
     with contextlib.redirect_stdout(io.StringIO()):
-        r = filters.r_waves(ecg, fs)
-    return filters.hrv_floor(ecg, t, fs, filters.r_times(ecg, t, fs, r))
+        r = analysis.r_waves(ecg, fs)
+    return analysis.hrv_floor(ecg, t, fs, analysis.r_times(ecg, t, fs, r))
+
+
+class Session:
+    """One isoflurane session (a key of SESSIONS): its recordings on one clock and its doses."""
+
+    def __init__(self, name):
+        self.name = name
+        self.files = files(name)
+        self.start = started(self.files[0])
+        self._vitals = None
+
+    def __repr__(self):
+        return "Session(%r: %d recordings)" % (self.name, len(self.files))
+
+    def recordings(self):
+        """The session's recordings, each as a Recording, and its start (s on the session clock)."""
+        for f in self.files:
+            yield Recording(f), (started(f) - self.start).total_seconds()
+
+    def vitals(self):
+        """The vitals every 10 s (see vitals()); worked out once, then kept."""
+        if self._vitals is None:
+            self._vitals = vitals(self.name)
+        return self._vitals
+
+    def doses(self):
+        """[(dose %, start s, end s)] for each stretch at one dose."""
+        return epochs(self.vitals())
+
+    def dose_values(self, key, doses=(1, 2, 4)):
+        """{dose: mean of v[key] over the last 2 min} at the first stretch at each dose."""
+        v = self.vitals()
+        out = {}
+        for level, start, end in self.doses():
+            if level in doses and level not in out:
+                out[level] = float(np.mean(last_values(v, key, start, end)))
+        return out
+
+    def dose_averages(self, **kwargs):
+        """Averaged beat and pulse at each dose (see dose_averages())."""
+        return dose_averages(self.name, **kwargs)
+
+    def breaths(self):
+        """Times (s on the session clock) and rates (breaths per minute) of the single breaths
+        in all recordings with a usable PPG (analysis.breaths)."""
+        times, rates = [], []
+        for rec, offset in self.recordings():
+            if rec.has_ppg:
+                t, rate = rec.breaths()
+                times.append(offset + t)
+                rates.append(rate)
+        return np.concatenate(times), np.concatenate(rates)

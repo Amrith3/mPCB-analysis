@@ -1,8 +1,12 @@
 """The graphs of the results report, one graph per file, each with its own title.
 
-ECG (22 Oct 14:54:30, Mouse 1): ecg_trace, ecg_beats_enlarged, ecg_spectrum.
-Averaged beat per dose (26 Oct, Mouse 1): beat_1pct, beat_2pct, beat_4pct.
-Isoflurane: breathing_over_time, heart_rate_over_time (26 Oct), breathing_per_dose, heart_rate_per_dose (3 runs).
+ECG (22 Oct 14:54:30, Mouse 1): ecg_trace, ecg_beats_enlarged, ecg_spectrum, and the spectrum after each
+filter step: ecg_spectrum_after_highpass, ecg_spectrum_after_50hz_notch, ecg_spectrum_after_150hz_notch.
+Averaged beat per dose (26 Oct, Mouse 1): beat_1pct, beat_2pct, beat_4pct. For display the beat is
+interpolated to 8192 samples per second and smoothed with a Gaussian (sigma 0.5 ms); the intervals are
+measured on the beat before smoothing.
+Isoflurane: breathing_over_time (single breaths and their median over 30 s), heart_rate_over_time (26 Oct),
+breathing_per_dose, heart_rate_per_dose (3 runs).
 PPG (22 Oct 14:54:30): ppg_filtered, ppg_spectrum, ppg_on_r_waves.
 PPG pulse per dose (26 Oct): pulse_1pct, pulse_2pct, pulse_4pct, pulse_0pct.
 PPG against ECG heart rate (14 recordings): hr_ppg_vs_ecg, bland_altman.
@@ -19,17 +23,16 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
-from scipy.ndimage import uniform_filter1d  # noqa: E402
+from scipy.interpolate import CubicSpline  # noqa: E402
+from scipy.ndimage import gaussian_filter1d, uniform_filter1d  # noqa: E402
 from scipy.signal import butter, find_peaks, sosfiltfilt, welch  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
-sys.path.insert(0, os.path.join(REPO, "isoflurane"))
-import sessions  # noqa: E402  (puts the main folder on the path)
-import filters  # noqa: E402
-import panels  # noqa: E402
-from panels import AXIS, BLUE, HAIRLINE, INK_2, ORANGE  # noqa: E402
-from recording import FILE, load  # noqa: E402
+sys.path.insert(0, REPO)
+from mpcb import analysis, filters, plotting, sessions  # noqa: E402
+from mpcb.plotting import AXIS, BLUE, HAIRLINE, INK_2, ORANGE  # noqa: E402
+from mpcb.recording import FILE, Recording  # noqa: E402
 
 SESSION = "26 Oct, 30 g"
 RUNS = [("22 Oct, 30 g", "Mouse 1, 22 Oct", BLUE), ("26 Oct, 30 g", "Mouse 1, 26 Oct", ORANGE),
@@ -38,18 +41,21 @@ RED = "tab:red"
 
 
 def style():
-    panels.figure_style()
+    """The repository's figure style with DejaVu Sans, bold titles on the left."""
+    plotting.figure_style()
     plt.rcParams.update({"font.sans-serif": ["DejaVu Sans"], "axes.titleweight": "bold", "axes.titlelocation": "left"})
 
 
 def graph(title, size=(6.3, 2.6)):
+    """A new figure with one axis and its title."""
     fig, ax = plt.subplots(figsize=size, layout="constrained")
     ax.set_title(title)
     return fig, ax
 
 
 def save(fig, name):
-    panels.save(fig, __file__, name)
+    """Save the figure as PDF and PNG in this folder, then close it."""
+    plotting.save(fig, __file__, name)
     plt.close(fig)
 
 
@@ -69,20 +75,22 @@ for old in os.listdir(HERE):                                  # outputs of an ol
     if old.endswith((".png", ".pdf")):
         os.remove(os.path.join(HERE, old))
 with contextlib.redirect_stdout(io.StringIO()):
-    rec = load(FILE)
+    rec = Recording(FILE)
     d = sessions.dose_averages(SESSION, ppg_ms=(-50, 200))
 v = d["v"]
-fs, t = rec["fs_ecg"], rec["t_ecg"]
-ecg_mv = filters.notches(filters.ecg_highpass(rec["ecg"], fs), fs) / 1000
-r = filters.r_waves(rec["ecg"], fs)
+fs, t = rec.fs_ecg, rec.t_ecg
+ecg_mv = filters.notches(filters.ecg_highpass(rec.ecg, fs), fs) / 1000
+r = analysis.r_waves(rec.ecg, fs)
 
 
 def evenness(start):
+    """How even the R waves are in the 5 s from start: smallest R height / median R height."""
     amp = ecg_mv[r[(t[r] >= start) & (t[r] < start + 5)]]
     return amp.min() / np.median(amp)
 
 
 def ms(x):
+    """Milliseconds as a number of ECG samples."""
     return int(round(x * fs / 1000))
 
 
@@ -112,12 +120,12 @@ ax.set_ylabel("ECG (mV)")
 save(fig, "ecg_beats_enlarged")
 
 seg = (t >= t0 - 30) & (t < t0 + 30)
-f, pw = welch(rec["ecg"][seg] - np.mean(rec["ecg"][seg]), fs=fs, nperseg=int(8 * fs))
+f, pw = welch(rec.ecg[seg] - np.mean(rec.ecg[seg]), fs=fs, nperseg=int(8 * fs))
 db = 10 * np.log10(pw)
 fig, ax = graph("Spectrum of the raw ECG, before filtering", (6.3, 2.8))
 ax.semilogx(f[1:], db[1:], color=BLUE, linewidth=0.6)
 plt.sca(ax)
-panels.frequency_axis(fs)
+plotting.frequency_axis(fs)
 ax.set_xlim(1, fs / 2)
 fhr = 1 / np.median(np.diff(t[rs]))
 k1 = np.argmin(np.abs(f - fhr))
@@ -133,6 +141,31 @@ ax.set_ylabel("Power (dB)")
 save(fig, "ecg_spectrum")
 print("ECG: %.0f s to %.0f s, %.0f beats/min, spectrum peak %.2f Hz" % (t0, t0 + 5, 60 * fhr, f[k1]))
 
+# spectrum after each filter step, same 60 s -----------------------------------------------------
+hp = filters.ecg_highpass(rec.ecg, fs)
+n50 = filters.notch(hp, fs, 50)
+n150 = filters.notch(n50, fs, 150)
+for title, before, after, band, name in [
+        ("after the 3 Hz high-pass", rec.ecg[seg] - np.mean(rec.ecg[seg]), hp[seg], (0.2, 2), "ecg_spectrum_after_highpass"),
+        ("after the 50 Hz notch", hp[seg], n50[seg], (49.5, 50.5), "ecg_spectrum_after_50hz_notch"),
+        ("after the 150 Hz notch", n50[seg], n150[seg], (149.5, 150.5), "ecg_spectrum_after_150hz_notch")]:
+    fb, pb = welch(before, fs=fs, nperseg=int(8 * fs))
+    fa, pa = welch(after, fs=fs, nperseg=int(8 * fs))
+    inb = (fb >= band[0]) & (fb <= band[1])
+    drop = 10 * np.log10(np.mean(pb[inb]) / np.mean(pa[inb]))
+    fig, ax = graph("Spectrum of the ECG " + title, (6.3, 2.6))
+    ax.semilogx(fb[1:], 10 * np.log10(pb[1:]), color=AXIS, linewidth=0.8, label="before this filter")
+    ax.semilogx(fa[1:], 10 * np.log10(pa[1:]), color=BLUE, linewidth=0.6, label="after this filter")
+    ax.axvspan(*band, color=RED, alpha=0.15, linewidth=0)
+    plt.sca(ax)
+    plotting.frequency_axis(fs)
+    ax.set_xlim(0.3, fs / 2)
+    ax.set_xlabel("Frequency (Hz)")
+    ax.set_ylabel("Power (dB)")
+    ax.legend(loc="lower center", fontsize=7)
+    save(fig, name)
+    print("%s: %.0f dB less from %g to %g Hz" % (title, drop, *band))
+
 # averaged beat per dose ------------------------------------------------------------------------
 for level in (1, 2, 4):
     c = [c for c in d["doses"] if c["level"] == level][0]
@@ -141,7 +174,9 @@ for level in (1, 2, 4):
     fig, ax = graph("Averaged ECG beat at %g %% isoflurane (26 Oct, Mouse 1)" % level, (4.0, 2.8))
     ax.axvspan(p["P on"], p["P off"], color=ORANGE, alpha=0.15, linewidth=0)
     ax.axvspan(p["QRS on"], p["QRS off"], color=BLUE, alpha=0.15, linewidth=0)
-    ax.plot(d["t_ecg"], (c["beat"] - p["base"]) / 1000, color=BLUE, linewidth=1)
+    t_fine = np.arange(d["t_ecg"][0], d["t_ecg"][-1], 1000 / 8192)
+    smooth = gaussian_filter1d(CubicSpline(d["t_ecg"], c["beat"])(t_fine), 0.5 * 8192 / 1000)
+    ax.plot(t_fine, (smooth - p["base"]) / 1000, color=BLUE, linewidth=1)
     ax.text((p["P on"] + p["P off"]) / 2, 0.5, "P\n%.1f ms" % pd, ha="center", fontsize=7, color=INK_2)
     ax.text(p["QRS off"] + 2, 0.5, "QRS\n%.1f ms" % qrs, ha="left", fontsize=7, color=INK_2)
     ax.annotate("", (p["P on"], -0.5), (p["QRS on"], -0.5), arrowprops=dict(arrowstyle="<->", color=INK_2, lw=0.7, shrinkA=0, shrinkB=0))
@@ -154,14 +189,24 @@ for level in (1, 2, 4):
     print("beat %g %%: P %.1f, PQ %.1f, QRS %.1f ms, %d beats" % (level, pd, pq, qrs, c["beats"]))
 
 # breathing and heart rate against the dose -----------------------------------------------------
-for key, label, name in [("breathing", "Breathing rate", "breathing_over_time"), ("hr", "Heart rate", "heart_rate_over_time")]:
-    fig, ax = graph("%s during the 26 Oct session (Mouse 1)" % label)
-    tm, y = sessions.with_gaps(v, key)
-    ax.plot(tm, y, color=BLUE)
-    dose_bands(ax, v)
-    ax.set_ylabel("%s (per min)" % label)
-    ax.set_ylim(None, np.nanmax(y) * 1.12)
-    save(fig, name)
+with contextlib.redirect_stdout(io.StringIO()):
+    tb, rb = sessions.Session(SESSION).breaths()
+median_30s = np.array([np.median(rb[np.abs(tb - x) < 15]) if np.sum(np.abs(tb - x) < 15) >= 3 else np.nan for x in v["t"]])
+fig, ax = graph("Breathing rate during the 26 Oct session (Mouse 1)")
+ax.plot(tb / 60, rb, ".", color=AXIS, markersize=1.6, markeredgewidth=0, label="single breaths")
+ax.plot(v["t"] / 60, median_30s, color=BLUE, label="median of the breaths in 30 s")
+dose_bands(ax, v)
+ax.set_ylabel("Breathing rate (per min)")
+ax.set_ylim(0, 260)
+ax.legend(loc="upper center", fontsize=7, markerscale=4)
+save(fig, "breathing_over_time")
+fig, ax = graph("Heart rate during the 26 Oct session (Mouse 1)")
+tm, y = sessions.with_gaps(v, "hr")
+ax.plot(tm, y, color=BLUE)
+dose_bands(ax, v)
+ax.set_ylabel("Heart rate (per min)")
+ax.set_ylim(None, np.nanmax(y) * 1.12)
+save(fig, "heart_rate_over_time")
 
 per_dose = {}                                                # run -> dose -> (heart rate, breathing), mean of the last 2 min
 for name, _, _ in RUNS:
@@ -182,7 +227,7 @@ for k, label, name in [(1, "Breathing rate", "breathing_per_dose"), (0, "Heart r
     print("%s per dose: %s" % (label, [np.round([per_dose[n][lv][k] for lv in (1, 2, 4)], 1).tolist() for n, _, _ in RUNS]))
 
 # PPG -------------------------------------------------------------------------------------------
-ir, fp, tp = rec["ir_nA"], rec["fs_ppg"], rec["t_ppg"]
+ir, fp, tp = rec.ir_nA, rec.fs_ppg, rec.t_ppg
 bp = sosfiltfilt(butter(2, [0.1, 15], btype="band", fs=fp, output="sos"), ir)
 br = filters.breathing_band(filters.ppg_lowpass(ir, fp), fp)
 pk, _ = find_peaks(br, distance=int(fp))
