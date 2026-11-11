@@ -11,13 +11,15 @@ and how many of the wrong pieces are at twice the breathing rate.
 import contextlib
 import io
 import os
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-from mpcb import analysis, filters, plotting
-from mpcb.recording import Recording, all_files
-from mpcb.sessions import started
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the main folder
+from mpcb import analysis, filters, plotting  # noqa: E402
+from mpcb.recording import Recording, all_files  # noqa: E402
+from mpcb.sessions import started  # noqa: E402
 
 ecg_hr, ppg_hr, ppg_snr, breath_rate, session = [], [], [], [], []
 print("recording: pieces with a clear beat, PPG within 5 % of ECG")
@@ -125,5 +127,5 @@ ax.set_ylabel("PPG − ECG (beats/min)")
 plotting.letter(ax, "C")
 bottom.align_titles()
 
-plotting.save(fig, __file__, "hr_agreement")
+plotting.save(fig, "hr_agreement")
 plt.show()

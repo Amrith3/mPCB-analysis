@@ -1,6 +1,4 @@
-*.png
-__pycache__/
-*.pdf
+outputs/
 data/*/
-*.csv
+__pycache__/
 .ipynb_checkpoints/

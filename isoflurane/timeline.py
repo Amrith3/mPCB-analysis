@@ -63,5 +63,5 @@ axes[-1].set_xlabel("Time (min)")
 axes[-1].set_xlim(0, v["end"] / 60)
 fig.align_ylabels(axes)
 
-plotting.save(fig, __file__, "timeline")
+plotting.save(fig, "timeline", "isoflurane")
 plt.show()

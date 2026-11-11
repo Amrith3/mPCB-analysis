@@ -1,10 +1,14 @@
 """PPG (IR) filtering stages and vitals per 30 s window: heart rate, breathing rate, perfusion index."""
+import os
+import sys
+
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import find_peaks
 
-from mpcb import analysis, filters, plotting
-from mpcb.recording import Recording
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the main folder
+from mpcb import analysis, filters, plotting  # noqa: E402
+from mpcb.recording import Recording, output  # noqa: E402
 
 WINDOW_S = 30
 
@@ -130,5 +134,5 @@ plt.title("perfusion index (averaged pulse)")
 plt.xlabel("time (s)")
 plt.ylabel("% of the light level")
 
-plt.savefig("ppg_vitals.png", dpi=150)
+plt.savefig(output("ppg_vitals.png"), dpi=150)
 plt.show()

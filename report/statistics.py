@@ -1,8 +1,8 @@
-"""The t-tests of the results report: our values per dose against published values (t_tests.csv).
+"""The t-tests of the results report: our values per dose against published values (outputs/report/t_tests.csv).
 
 Ours: mean ± SD over the three runs that went through 1, 2 and 4 % (Mouse 1 on 22 and 26 Oct,
 Mouse 2 on 22 Oct), each run's value the mean of its last 2 min at that dose (heart rate,
-breathing) or the interval of its averaged beat (isoflurane/ecg.csv; run isoflurane/table.py first).
+breathing) or the interval of its averaged beat (outputs/isoflurane/ecg.csv; run isoflurane/table.py first).
 Published: mean ± SD and n as given in the paper (SD = SEM x sqrt(n) where the paper gives the SEM).
 Test: two-sided Student's t-test from these summary numbers (mpcb.stats.t_test). With three runs from
 two mice the tests are only a first indication.
@@ -18,6 +18,7 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 from mpcb import stats  # noqa: E402
+from mpcb.recording import output  # noqa: E402
 
 # (our value, dose, study, condition, mean, SD, n)
 PUBLISHED = [
@@ -38,10 +39,10 @@ UNITS = {"hr": "beats/min", "breathing": "breaths/min", "P": "ms", "PQ": "ms", "
 
 
 def intervals():
-    """{(interval, dose): [value of each run]} from isoflurane/ecg.csv, first stretch at each dose."""
-    path = os.path.join(os.path.dirname(HERE), "isoflurane", "ecg.csv")
+    """{(interval, dose): [value of each run]} from outputs/isoflurane/ecg.csv, first stretch at each dose."""
+    path = output("isoflurane", "ecg.csv")
     if not os.path.exists(path):
-        raise SystemExit("Run isoflurane/table.py first: it writes isoflurane/ecg.csv.")
+        raise SystemExit("Run isoflurane/table.py first: it writes outputs/isoflurane/ecg.csv.")
     out = {}
     with open(path, encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
@@ -68,7 +69,7 @@ for key, dose, study, condition, mean, sd, n in PUBLISHED:
                  "Dose (%)": dose, "Ours (mean ± SD)": "%.1f ± %.1f" % (m, s), "Ours n": k,
                  "Published (mean ± SD)": "%.1f ± %.1f" % (mean, sd), "Published n": n,
                  "Study": study, "Condition": condition, "t": "%.2f" % t, "p": "%.3f" % p})
-pd.DataFrame(rows).to_csv(os.path.join(HERE, "t_tests.csv"), index=False, encoding="utf-8-sig")
+pd.DataFrame(rows).to_csv(output("report", "t_tests.csv"), index=False, encoding="utf-8-sig")
 for row in rows:
     print("%-24s %g %%  ours %-13s (n=%d)  %-29s %-13s (n=%3d)  p = %s" % (
         row["Value"], row["Dose (%)"], row["Ours (mean ± SD)"], row["Ours n"], row["Study"],

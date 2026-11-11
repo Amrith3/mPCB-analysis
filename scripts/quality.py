@@ -1,4 +1,4 @@
-"""Signal quality of every recording in data/, as a table (quality.csv):
+"""Signal quality of every recording in data/, as a table (outputs/quality.csv):
 
 - clear beat: the 30 s pieces in which the ECG's beat repeats clearly (analysis.r_waves)
 - mains: the share of the ECG's power (3 Hz high-passed) within 1 Hz of the mains and its harmonics
@@ -13,14 +13,16 @@ import contextlib
 import io
 import os
 import re
+import sys
 
 import numpy as np
 import pandas as pd
 from scipy.signal import welch
 
-from mpcb import filters
-from mpcb.recording import DATA, Recording, all_files
-from mpcb.stats import median_iqr
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the main folder
+from mpcb import filters  # noqa: E402
+from mpcb.recording import DATA, Recording, all_files, output  # noqa: E402
+from mpcb.stats import median_iqr  # noqa: E402
 
 rows = []
 for f in all_files():
@@ -52,8 +54,7 @@ for f in all_files():
         "PPG": "used (IR %.0f nA)" % np.mean(rec.ir_nA) if rec.has_ppg else rec.ppg_problem,
     })
 
-pd.DataFrame(rows).to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "quality.csv"), index=False,
-                          encoding="utf-8-sig")
+pd.DataFrame(rows).to_csv(output("quality.csv"), index=False, encoding="utf-8-sig")
 print(" | ".join(rows[0].keys()))
 for row in rows:
     print(" | ".join(str(v) for v in row.values()))

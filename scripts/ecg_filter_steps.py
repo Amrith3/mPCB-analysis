@@ -1,8 +1,12 @@
 """ECG filtering levels: raw, + 3 Hz high-pass, + 50 Hz notch, + 150 Hz notch."""
+import os
+import sys
+
 import matplotlib.pyplot as plt
 
-from mpcb import filters, plotting
-from mpcb.recording import Recording
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the main folder
+from mpcb import filters, plotting  # noqa: E402
+from mpcb.recording import Recording, output  # noqa: E402
 
 rec = Recording()
 fs = rec.fs_ecg
@@ -38,5 +42,5 @@ for i in range(n):
         plt.subplot(n, 3, 3 * i + 3)
         plotting.step3_before_after(levels[i - 1][1], x, fs)
 
-plt.savefig("ecg_filter_steps.png", dpi=150)
+plt.savefig(output("ecg_filter_steps.png"), dpi=150)
 plt.show()

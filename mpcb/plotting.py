@@ -1,17 +1,16 @@
 """Plotting: the figure style and the panels the figure scripts share.
 
-The filter figures (ecg_filter_steps.py, ppg_vitals.py) build each row up in three steps:
+The filter figures (scripts/ecg_filter_steps.py, scripts/ppg_vitals.py) build each row up in three steps:
 step 1 the signal's spectrum, step 2 the filter's gain, step 3 the spectrum before and after the
 filter. figure_style() is the style of the other figures: Arial 8 pt, thin axes, no box.
 """
-import os
-
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import FuncFormatter, NullFormatter
 from scipy.signal import welch
 
 from .filters import gain_db
+from .recording import output
 
 INK = "#0b0b0b"
 INK_2 = "#52514e"
@@ -42,11 +41,10 @@ def letter(ax, text):
                 fontsize=10, fontweight="bold", va="top")
 
 
-def save(fig, script, name):
-    """Save the figure as PDF and PNG next to the script that made it (pass __file__ as script)."""
-    folder = os.path.dirname(os.path.abspath(script))
-    fig.savefig(os.path.join(folder, name + ".pdf"))
-    fig.savefig(os.path.join(folder, name + ".png"))
+def save(fig, name, folder=""):
+    """Save the figure as PDF and PNG in outputs/, or in a folder inside it (e.g. "isoflurane")."""
+    fig.savefig(output(folder, name + ".pdf"))
+    fig.savefig(output(folder, name + ".png"))
 
 
 def plain(value, position):

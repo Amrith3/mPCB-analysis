@@ -3,12 +3,16 @@
 The ECG removed is measured on the ECG with the mains fitted out (filters.mains_fitted_out),
 which itself costs about 1-2 % of the QRS.
 """
+import os
+import sys
+
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import welch
 
-from mpcb import analysis, filters
-from mpcb.recording import Recording
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the main folder
+from mpcb import analysis, filters  # noqa: E402
+from mpcb.recording import Recording, output  # noqa: E402
 
 rec = Recording()
 fs = rec.fs_ecg
@@ -96,5 +100,5 @@ used = filters.notches(clean, fs)
 beat_used = analysis.averaged(used, r, half)
 print("the notches used together", filters.notch_frequencies(fs), "Hz: QRS", round(100 * (qrs(beat_used) / qrs(beat_before) - 1), 1), "%")
 
-plt.savefig("notch_differences.png", dpi=150)
+plt.savefig(output("notch_differences.png"), dpi=150)
 plt.show()

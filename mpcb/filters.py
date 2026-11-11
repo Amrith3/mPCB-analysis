@@ -13,7 +13,7 @@ from scipy.signal import butter, filtfilt, iirnotch, sosfiltfilt
 
 ECG_HP_HZ = 3                         # ECG high-pass cut-off
 MAINS_HZ = [50, 100, 150, 200, 250]   # mains and its harmonics below 256 Hz
-NOTCH_HZ = [50, 150]                  # the mains notches used (see notch_differences.py)
+NOTCH_HZ = [50, 150]                  # the mains notches used (see scripts/notch_differences.py)
 NOTCH_Q = 30                          # notch quality: width = frequency / 30
 PPG_LP_HZ = 32                        # PPG low-pass cut-off
 HEART_HZ = [4, 11]                    # PPG heart band, 240-660 per minute

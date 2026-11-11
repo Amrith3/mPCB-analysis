@@ -21,12 +21,21 @@ from . import analysis, filters
 
 DATA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 FILE = os.path.join(DATA, "mouse_isoflurane_20261022", "mouse_30g", "mice_anest_20261022_145430.csv")
+OUTPUTS = os.path.join(os.path.dirname(DATA), "outputs")
 
 
 def unzip(session):
     """Unzip data/<session>.zip into data/ the first time it is needed."""
     if not os.path.isdir(os.path.join(DATA, session)):
         zipfile.ZipFile(os.path.join(DATA, session + ".zip")).extractall(DATA)
+
+
+def output(*parts):
+    """Where a result is saved: a path in outputs/, e.g. output("isoflurane", "table.csv"). Its folder is
+    made if needed."""
+    path = os.path.join(OUTPUTS, *parts)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return path
 
 
 def all_files():

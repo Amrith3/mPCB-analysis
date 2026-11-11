@@ -16,7 +16,7 @@ and the floor of SDNN and RMSSD: what a perfectly regular heart would read with 
 table.csv: all of it, with the number of beats, the perfusion index in % of the light level, the
 coefficient of variation (CV = 100 x SD / mean; not for temperature, as °C has no true zero) and
 the wave sizes.
-Saved in this folder.
+Saved in outputs/isoflurane/.
 """
 import os
 import sys
@@ -26,6 +26,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the main folder
 from mpcb import sessions, stats  # noqa: E402
+from mpcb.recording import output  # noqa: E402
 
 RUNS = [("22 Oct, 30 g", "Mouse 1 (30 g), 22 Oct"),
         ("26 Oct, 30 g", "Mouse 1 (30 g), 26 Oct"),
@@ -52,10 +53,9 @@ def mean_sd(x, fmt):
 
 
 def write(rows, name):
-    """Save the rows (a list of dicts) as a CSV file in this folder and print them as a table."""
+    """Save the rows (a list of dicts) as a CSV file in outputs/isoflurane/ and print them as a table."""
     columns = list(rows[0].keys())
-    pd.DataFrame(rows).to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), name), index=False,
-                              encoding="utf-8-sig")
+    pd.DataFrame(rows).to_csv(output("isoflurane", name), index=False, encoding="utf-8-sig")
     lines = [columns] + [[str(row[c]) for c in columns] for row in rows]
     widths = [max(len(line[i]) for line in lines) for i in range(len(columns))]
     print("\n" + name)

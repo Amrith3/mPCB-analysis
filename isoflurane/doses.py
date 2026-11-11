@@ -85,5 +85,5 @@ for row, text in enumerate("ABCD"):
     plotting.letter(axes[row, 0], text)
 fig.align_ylabels(axes[:, 0])
 
-plotting.save(fig, __file__, "doses")
+plotting.save(fig, "doses", "isoflurane")
 plt.show()

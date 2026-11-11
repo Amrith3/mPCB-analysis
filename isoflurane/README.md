@@ -1,8 +1,8 @@
 # Isoflurane doses
 
 How heart rate, breathing, the ECG beat, the PPG pulse and skin temperature change with the
-isoflurane dose. It uses the recordings in `../data` (unzipped on first use) and the filters of the
-main folder.
+isoflurane dose. It uses the recordings in `../data` (unzipped on first use) and the code in `../mpcb`. The
+figures and tables are saved in `../outputs/isoflurane/`.
 
 ```
 py -3.13 isoflurane/timeline.py
@@ -27,7 +27,7 @@ Change `SESSION` at the top of `timeline.py` or `doses.py` for another session.
 - **Every 10 s**: heart rate from the R waves (60 / mean R-R, R-R outside 80-300 ms or more than
   30 % from the median left out); skin temperature; from the 30 s around it, breathing rate and
   perfusion index (PPG), the signal-to-noise ratio of the ECG and of the PPG, SDNN and RMSSD (see
-  the main README). Where the ECG's noise is more than 3 x, or its mains more than 5 x, the
+  `../METHODS.md`). Where the ECG's noise is more than 3 x, or its mains more than 5 x, the
   session's usual, there is no heart rate, SNR or HRV (movement, the heating pad on AC). The
   perfusion index counts only where the PPG's heart rate is within 5 % of the ECG's. A breathing
   rate more than 30 % from the median of the minute around it is left out (two breaths taken for
@@ -39,8 +39,7 @@ Change `SESSION` at the top of `timeline.py` or `doses.py` for another session.
   In the tables, ± is the SD of the 10 s values over those 2 min, within one animal, as the
   literature reports vitals (Constantinides et al. 2011, Tsukamoto et al. 2015); the SNR and HRV
   are given as median (IQR) of the same values, since a few noisy windows skew them; next to the
-  HRV, its floor: what a perfectly regular heart would read with the noise of those 2 min (main
-  README). The
+  HRV, its floor: what a perfectly regular heart would read with the noise of those 2 min (`../METHODS.md`). The
   perfusion index in `vitals.csv` is in % of the run's 1 % value: its size depends on how firmly
   the sensor sits, so only its change within a run is compared.
 - **Averaged beat**: the ECG with the mains fitted out (a notch rings after the QRS), the beats
@@ -55,7 +54,7 @@ Change `SESSION` at the top of `timeline.py` or `doses.py` for another session.
 
 ## Checks
 
-See the Checks section of the main README.
+See the Checks section of `../METHODS.md`.
 
 ## Sources
 

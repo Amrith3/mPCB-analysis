@@ -3,13 +3,16 @@ recording's beat and noise. Each line prints what was found against the known va
 AssertionError means a method no longer finds it."""
 import contextlib
 import io
+import os
+import sys
 
 import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.signal import butter, sosfiltfilt
 
-from mpcb import analysis, filters, sessions
-from mpcb.recording import FILE, Recording
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the main folder
+from mpcb import analysis, filters, sessions  # noqa: E402
+from mpcb.recording import FILE, Recording  # noqa: E402
 
 rng = np.random.default_rng(1)
 fs = 512

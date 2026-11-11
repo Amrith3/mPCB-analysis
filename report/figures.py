@@ -54,8 +54,8 @@ def graph(title, size=(6.3, 2.6)):
 
 
 def save(fig, name):
-    """Save the figure as PDF and PNG in this folder, then close it."""
-    plotting.save(fig, __file__, name)
+    """Save the figure as PDF and PNG in outputs/report/, then close it."""
+    plotting.save(fig, name, "report")
     plt.close(fig)
 
 
@@ -71,9 +71,6 @@ def dose_bands(ax, v):
 
 
 style()
-for old in os.listdir(HERE):                                  # outputs of an older layout
-    if old.endswith((".png", ".pdf")):
-        os.remove(os.path.join(HERE, old))
 with contextlib.redirect_stdout(io.StringIO()):
     rec = Recording(FILE)
     d = sessions.dose_averages(SESSION, ppg_ms=(-50, 200))
@@ -305,7 +302,7 @@ for c, size in zip(d["doses"], sizes):
 # PPG against ECG heart rate --------------------------------------------------------------------
 plt.rcdefaults()                                                       # hr_agreement.py sets its own style
 with contextlib.redirect_stdout(io.StringIO()):
-    g = runpy.run_path(os.path.join(REPO, "hr_agreement.py"))          # also rewrites hr_agreement.png/pdf
+    g = runpy.run_path(os.path.join(REPO, "scripts", "hr_agreement.py"))   # also rewrites its outputs
 plt.close("all")
 style()
 e, q, good = g["ecg_hr"], g["ppg_hr"], g["ppg_snr"] >= -5
