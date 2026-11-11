@@ -30,7 +30,7 @@ from scipy.signal import butter, find_peaks, sosfiltfilt, welch  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO)
-from mpcb import analysis, filters, plotting, sessions  # noqa: E402
+from mpcb import analysis, filters, plotting, sessions, stats  # noqa: E402
 from mpcb.plotting import AXIS, BLUE, HAIRLINE, INK_2, ORANGE  # noqa: E402
 from mpcb.recording import FILE, Recording  # noqa: E402
 
@@ -198,7 +198,7 @@ ax.plot(v["t"] / 60, median_30s, color=BLUE, label="median of the breaths in 30 
 dose_bands(ax, v)
 ax.set_ylabel("Breathing rate (per min)")
 ax.set_ylim(0, 260)
-ax.legend(loc="upper center", fontsize=7, markerscale=4)
+ax.legend(loc="upper center", bbox_to_anchor=(0.5, 0.92), ncol=2, fontsize=7, markerscale=4)
 save(fig, "breathing_over_time")
 fig, ax = graph("Heart rate during the 26 Oct session (Mouse 1)")
 tm, y = sessions.with_gaps(v, "hr")
@@ -208,23 +208,18 @@ ax.set_ylabel("Heart rate (per min)")
 ax.set_ylim(None, np.nanmax(y) * 1.12)
 save(fig, "heart_rate_over_time")
 
-per_dose = {}                                                # run -> dose -> (heart rate, breathing), mean of the last 2 min
-for name, _, _ in RUNS:
-    with contextlib.redirect_stdout(io.StringIO()):
-        vr = sessions.vitals(name)
-    for level, start, end in sessions.epochs(vr):
-        if level in (1, 2, 4) and level not in per_dose.setdefault(name, {}):
-            per_dose[name][level] = tuple(np.mean(sessions.last_values(vr, key, start, end)) for key in ("hr", "breathing"))
-for k, label, name in [(1, "Breathing rate", "breathing_per_dose"), (0, "Heart rate", "heart_rate_per_dose")]:
+with contextlib.redirect_stdout(io.StringIO()):                # key -> dose -> each run's mean of the last 2 min
+    per_dose = {key: stats.per_dose(key, [run for run, _, _ in RUNS]) for key in ("hr", "breathing")}
+for key, label, name in [("breathing", "Breathing rate", "breathing_per_dose"), ("hr", "Heart rate", "heart_rate_per_dose")]:
     fig, ax = graph("%s at each dose, three runs" % label, (4.0, 3.0))
-    for run, run_label, colour in RUNS:
-        ax.plot([1, 2, 4], [per_dose[run][lv][k] for lv in (1, 2, 4)], "o-", color=colour, markersize=3, label=run_label)
+    for i, (_, run_label, colour) in enumerate(RUNS):
+        ax.plot([1, 2, 4], [per_dose[key][lv][i] for lv in (1, 2, 4)], "o-", color=colour, markersize=3, label=run_label)
     ax.set_xticks([1, 2, 4])
     ax.set_xlabel("Isoflurane (%)")
     ax.set_ylabel("%s (per min)" % label)
     ax.legend(fontsize=7)
     save(fig, name)
-    print("%s per dose: %s" % (label, [np.round([per_dose[n][lv][k] for lv in (1, 2, 4)], 1).tolist() for n, _, _ in RUNS]))
+    print("%s per dose: %s" % (label, np.round([per_dose[key][lv] for lv in (1, 2, 4)], 1).T.tolist()))
 
 # PPG -------------------------------------------------------------------------------------------
 ir, fp, tp = rec.ir_nA, rec.fs_ppg, rec.t_ppg
@@ -298,8 +293,8 @@ for c, size in zip(d["doses"], sizes):
     ax.plot(d["t_ppg"], y, color=BLUE, linewidth=1)
     ax.axvline(0, color=AXIS, linewidth=0.6, linestyle=":")
     ax.plot([d["t_ppg"][i_max]] * 2, [0, y[i_max]], color=ORANGE, linewidth=1.2)
-    ax.text(d["t_ppg"][i_max] + 6, y[i_max], "%.3f %%\n%.0f %% of 1 %%" % (size, 100 * size / sizes[0]), fontsize=7,
-            color=ORANGE, va="top")
+    ax.annotate("%.3f %% (%.0f %% of 1 %%)" % (size, 100 * size / sizes[0]), (d["t_ppg"][i_max], y[i_max]), xytext=(0, 4),
+                textcoords="offset points", ha="center", va="bottom", fontsize=7, color=ORANGE)
     ax.set_xlim(-50, 200)
     ax.set_ylim(0, max(sizes) * 1.25)
     ax.set_xlabel("Time from R (ms)")
@@ -308,10 +303,11 @@ for c, size in zip(d["doses"], sizes):
     print("pulse %g %%: %.3f %% of the light, %.0f %% of 1 %%, %d beats" % (c["level"], size, 100 * size / sizes[0], c["beats"]))
 
 # PPG against ECG heart rate --------------------------------------------------------------------
+plt.rcdefaults()                                                       # hr_agreement.py sets its own style
 with contextlib.redirect_stdout(io.StringIO()):
     g = runpy.run_path(os.path.join(REPO, "hr_agreement.py"))          # also rewrites hr_agreement.png/pdf
 plt.close("all")
-style()                                                                # hr_agreement sets its own
+style()
 e, q, good = g["ecg_hr"], g["ppg_hr"], g["ppg_snr"] >= -5
 r2 = np.corrcoef(e[good], q[good])[0, 1] ** 2
 diff, mean = q[good] - e[good], (q[good] + e[good]) / 2

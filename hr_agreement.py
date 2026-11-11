@@ -3,32 +3,26 @@ data/ with a usable PPG: a Bland-Altman plot (Bland and Altman 1986, Lancet 327:
 
 Recordings where the ECG's beat repeats clearly in fewer than half the 30 s pieces are left out
 (the ECG is the reference). One value pair per 30 s piece in which the beat repeats clearly:
-ECG: 60 / median R-R. PPG: the strongest frequency in the heart band (Welch), as in ppg_vitals.py.
+ECG: 60 / median R-R. PPG: the strongest frequency in the heart band (analysis.ppg_heart_rate).
 Bias = mean of PPG - ECG; limits of agreement = bias ± 1.96 SD.
-It also prints how often the PPG heart rate is within 5 % of the ECG's at each PPG SNR (filters.snr_db),
+It also prints how often the PPG heart rate is within 5 % of the ECG's at each PPG SNR (analysis.snr_db),
 and how many of the wrong pieces are at twice the breathing rate.
 """
 import contextlib
-import glob
 import io
 import os
-import re
-from datetime import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.signal import welch
 
 from mpcb import analysis, filters, plotting
-from mpcb.recording import DATA, Recording, unzip
-
-for z in glob.glob(os.path.join(DATA, "*.zip")):
-    unzip(os.path.basename(z)[:-4])
+from mpcb.recording import Recording, all_files
+from mpcb.sessions import started
 
 ecg_hr, ppg_hr, ppg_snr, breath_rate, session = [], [], [], [], []
 print("recording: pieces with a clear beat, PPG within 5 % of ECG")
-for f in sorted(glob.glob(os.path.join(DATA, "*", "**", "*.csv"), recursive=True), key=os.path.basename):
-    when = datetime.strptime(re.search(r"\d{8}_\d{6}", os.path.basename(f)).group(), "%Y%m%d_%H%M%S")
+for f in sorted(all_files(), key=os.path.basename):
+    when = started(os.path.basename(f))
     day = "%d %s" % (when.day, when.strftime("%b"))
     mouse = os.path.basename(os.path.dirname(f))
     label = day + (", " + mouse[6:-1] + " g" if mouse.startswith("mouse_") and mouse.endswith("g") else "")
@@ -52,10 +46,8 @@ for f in sorted(glob.glob(os.path.join(DATA, "*", "**", "*.csv"), recursive=True
         rr = rr[(rr >= 0.08) & (rr <= 0.30)]
         if not clear or len(rr) < 10 or t1 - t0 < 20:
             continue
-        fr, p = welch(heart[near], fs=fp, nperseg=int(10 * fp), nfft=int(60 * fp))
-        band = (fr >= filters.HEART_HZ[0]) & (fr <= filters.HEART_HZ[1])
         snr = analysis.snr_db(tp, heart, r_t[(r_t >= t0) & (r_t < t1)], np.median(rr))
-        pairs.append((60 / np.median(rr), 60 * fr[band][np.argmax(p[band])], snr,
+        pairs.append((60 / np.median(rr), analysis.ppg_heart_rate(heart[near], fp, 60), snr,
                       analysis.breathing_rate(breath[near], fp)))
     if pairs:
         e, q, n, b = np.array(pairs).T
@@ -105,7 +97,7 @@ for k, s in enumerate(starts):
 ax.set_xlim(0.5, len(piece) + 0.5)
 ax.set_xlabel("30 s piece, in time order")
 ax.set_ylabel("Heart rate (beats/min)")
-ax.legend(loc="lower left", ncol=2)
+ax.legend(loc="lower center", ncol=2)
 plotting.letter(ax, "A")
 
 axes = bottom.subplots(1, 2)

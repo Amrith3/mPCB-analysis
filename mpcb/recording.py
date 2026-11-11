@@ -9,11 +9,13 @@
 The CSV file of the GUI holds one row per sample: ECG rows (512 per second), PPG rows (200 or
 50 per second) and notes typed during the recording. Its first line holds the settings.
 """
+import glob
 import os
 import zipfile
 
 import numpy as np
 import pandas as pd
+from scipy.signal import welch
 
 from . import analysis, filters
 
@@ -25,6 +27,13 @@ def unzip(session):
     """Unzip data/<session>.zip into data/ the first time it is needed."""
     if not os.path.isdir(os.path.join(DATA, session)):
         zipfile.ZipFile(os.path.join(DATA, session + ".zip")).extractall(DATA)
+
+
+def all_files():
+    """Every recording in data/, sorted by folder and name; every zip is unzipped first if needed."""
+    for z in glob.glob(os.path.join(DATA, "*.zip")):
+        unzip(os.path.basename(z)[:-4])
+    return sorted(glob.glob(os.path.join(DATA, "*", "**", "*.csv"), recursive=True))
 
 
 class Recording:
@@ -54,7 +63,10 @@ class Recording:
         the PPG on the ECG's clock. A complete recording has 0.15-0.35 % more PPG samples than its
         setting says; anything else means samples were lost, and a warning is printed.
         """
-        inside = os.path.relpath(os.path.abspath(file), DATA)
+        try:
+            inside = os.path.relpath(os.path.abspath(file), DATA)
+        except ValueError:                       # on another drive than data/
+            inside = ".."
         if not os.path.exists(file) and not inside.startswith(".."):
             unzip(inside.split(os.sep)[0])
         self.file = file
@@ -198,6 +210,53 @@ class Recording:
         pulses = np.searchsorted(self.t_ppg, self.t_ecg[r])
         pulse = analysis.averaged(self.heart_band(), pulses, half)
         return 1000 * np.arange(-half, half) / self.fs_ppg, pulse
+
+    # signal quality -----------------------------------------------------------------------------
+
+    def lost_samples(self, signal="ecg"):
+        """Samples lost in gaps of the ECG ("ecg") or the PPG ("ppg"): each step between time
+        stamps longer than 1.5 samples counts as its length in samples minus one."""
+        steps = np.diff(getattr(self, "t_" + signal)) * getattr(self, "fs_" + signal)
+        return int(np.sum(np.round(steps[steps > 1.5]) - 1))
+
+    def mains_hz(self):
+        """Where the mains shows in the ECG: the strongest frequency from 48 to 52 Hz (Welch, 32 s
+        pieces). Samples lost without a gap speed the signal up, so the mains then shows above
+        50 Hz, and 1 - 50 / mains_hz() is the share lost (1 in 91 gives 50.56 Hz)."""
+        f, p = welch(self.ecg, fs=self.fs_ecg, nperseg=min(len(self.ecg), int(32 * self.fs_ecg)))
+        near = (f > 48) & (f < 52)
+        return f[near][np.argmax(p[near])]
+
+    def clipped(self):
+        """Share (%) of the ECG samples at the end of the chip's range (±131071 counts)."""
+        return 100 * np.mean(np.abs(self.ecg_raw) >= 0.99 * 131071)
+
+    def beat_quality(self):
+        """SNR and heart-rate variability of each 30 s piece in which the beat repeats clearly and
+        at least 10 R times are matched.
+
+        Returns the pieces of r_waves() and four lists: the SNR (dB, analysis.snr_db) of
+        ecg_filtered() and of heart_band() (empty without a usable PPG), both lined up on the R
+        times, and the SDNN and RMSSD (ms, analysis.hrv).
+        """
+        pieces = []
+        r = self.r_waves(pieces)
+        r_t = self.r_times(r)
+        ecg = self.ecg_filtered()
+        heart = self.heart_band() if self.has_ppg else None
+        snr_ecg, snr_ppg, sdnn, rmssd = [], [], [], []
+        for first, end, clear in pieces:
+            inside = (r >= first) & (r < end) & ~np.isnan(r_t)
+            if not clear or np.sum(inside) < 10:
+                continue
+            rr = np.diff(r_t[inside])
+            snr_ecg.append(analysis.snr_db(self.t_ecg, ecg, r_t[inside], np.median(rr)))
+            if self.has_ppg:
+                snr_ppg.append(analysis.snr_db(self.t_ppg, heart, r_t[inside], np.median(rr)))
+            hrv = analysis.hrv(rr, self.fs_ecg)
+            sdnn.append(hrv[0])
+            rmssd.append(hrv[1])
+        return pieces, snr_ecg, snr_ppg, sdnn, rmssd
 
     def _need_ppg(self):
         if not self.has_ppg:

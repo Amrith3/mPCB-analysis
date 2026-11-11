@@ -1,16 +1,17 @@
 """Analysis: finding beats and breaths in the filtered signals and measuring from them.
 
-R waves and their exact times, heart rate, breathing rate (per window and breath by breath),
-averaged beats and pulses, signal-to-noise ratio and heart-rate variability.
+R waves and their exact times, heart rate from the ECG and the PPG, breathing rate (per window and
+breath by breath), averaged beats and pulses, perfusion index, signal-to-noise ratio and heart-rate
+variability.
 """
 import contextlib
 import io
 
 import numpy as np
 from scipy.interpolate import CubicSpline
-from scipy.signal import butter, correlate, find_peaks, sosfiltfilt
+from scipy.signal import butter, correlate, find_peaks, sosfiltfilt, welch
 
-from .filters import BREATH_HZ, MAINS_HZ, ecg_highpass, notches
+from .filters import BREATH_HZ, HEART_HZ, MAINS_HZ, ecg_highpass, notches
 
 
 def r_waves(ecg, fs, pieces_out=None):
@@ -154,6 +155,18 @@ def window_heart_rate(rr):
     return 60 / np.mean(beats)
 
 
+def ppg_heart_rate(heart, fs, resolution_s=30):
+    """Heart rate (beats per minute) from a piece of the PPG heart band: its strongest frequency.
+
+    How: Welch power spectrum of 10 s pieces, each padded to resolution_s seconds so the frequencies
+    are 1 / resolution_s Hz apart; the frequency of the highest power within HEART_HZ, x 60. A
+    breathing harmonic in the band can take the heartbeat's place.
+    """
+    f, p = welch(heart, fs=fs, nperseg=int(10 * fs), nfft=int(resolution_s * fs))
+    band = (f >= HEART_HZ[0]) & (f <= HEART_HZ[1])
+    return 60 * f[band][np.argmax(p[band])]
+
+
 def breathing_rate(x, fs):
     """Breaths per minute in a piece of the PPG breathing band, or nan if breathing is not clear.
 
@@ -224,6 +237,13 @@ def averaged(x, centres, half):
     return np.median(pieces, axis=0)
 
 
+def perfusion_index(heart, centres, light, half):
+    """Perfusion index (%): peak to peak of the heart band averaged on the R waves (centres: PPG
+    sample numbers, see averaged()), in % of the mean light level; nan with fewer than 3 beats."""
+    pulse = averaged(heart, centres, half)
+    return np.nan if pulse is None else 100 * np.ptp(pulse) / np.mean(light)
+
+
 def hrv(rr, fs):
     """Heart-rate variability: SDNN and RMSSD (ms) of R-R intervals (s, in order).
 
@@ -265,16 +285,15 @@ def snr_db(t, x, times, period):
     return 10 * np.log10(signal / noise) if signal > 0 else np.nan
 
 
-def hrv_floor(ecg, t, fs, r_t):
-    """SDNN and RMSSD (ms) that a perfectly regular heart would read with this ECG's noise.
+def beat_model(ecg, t, fs, r_t):
+    """The averaged beat of an ECG, to make up ECGs with a known rhythm and the ECG's own noise.
 
-    How: the averaged beat is taken out at every R time and put back at regular times, and the R
-    waves are found again. HRV values close to this floor are mostly measurement noise.
-    nan with fewer than 20 beats.
+    How: the median of the beats from 0.45 x the median R-R before to 0.55 x after each R time
+    (sorted, s), read between samples (cubic spline); a straight line from its first to its last
+    point is taken off and its ends fade out over 5 ms, so beats placed next to each other join.
+    Returns the R times with a whole beat inside the ECG, the median R-R (s) and place(times), the
+    beat put at each of the times (s) on the ECG's time axis t.
     """
-    r_t = np.sort(r_t[~np.isnan(r_t)])
-    if len(r_t) < 20:
-        return np.nan, np.nan
     period = np.median(np.diff(r_t))
     offsets = np.arange(-0.45 * period, 0.55 * period, 1 / fs)
     r_t = r_t[(r_t + offsets[0] > t[0]) & (r_t + offsets[-1] < t[-1])]
@@ -283,14 +302,28 @@ def hrv_floor(ecg, t, fs, r_t):
     edge = np.clip(np.minimum(offsets - offsets[0], offsets[-1] - offsets) / 0.005, 0, 1)
     shape = CubicSpline(offsets, average * 0.5 * (1 - np.cos(np.pi * edge)))
 
-    def beats(times):
+    def place(times):
         out = np.zeros(len(t))
         for c in times:
             k = slice(np.searchsorted(t, c + offsets[0]), np.searchsorted(t, c + offsets[-1]))
             out[k] += shape(t[k] - c)
         return out
 
-    made = ecg - beats(r_t) + beats(np.arange(r_t[0], r_t[-1], period))
+    return r_t, period, place
+
+
+def hrv_floor(ecg, t, fs, r_t):
+    """SDNN and RMSSD (ms) that a perfectly regular heart would read with this ECG's noise.
+
+    How: the averaged beat (beat_model) is taken out at every R time and put back at regular times,
+    and the R waves are found again. HRV values close to this floor are mostly measurement noise.
+    nan with fewer than 20 beats.
+    """
+    r_t = np.sort(r_t[~np.isnan(r_t)])
+    if len(r_t) < 20:
+        return np.nan, np.nan
+    r_t, period, place = beat_model(ecg, t, fs, r_t)
+    made = ecg - place(r_t) + place(np.arange(r_t[0], r_t[-1], period))
     with contextlib.redirect_stdout(io.StringIO()):
         found = r_times(made, t, fs, r_waves(made, fs))
     return hrv(np.diff(found[~np.isnan(found)]), fs)

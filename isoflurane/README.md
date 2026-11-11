@@ -32,8 +32,10 @@ Change `SESSION` at the top of `timeline.py` or `doses.py` for another session.
   perfusion index counts only where the PPG's heart rate is within 5 % of the ECG's. A breathing
   rate more than 30 % from the median of the minute around it is left out (two breaths taken for
   one).
-- **At each dose**: the last 2 min recorded at it. Each dose lasted about 5 min, and heart rate
-  was often still changing at the end, so these are values after about 5 min, not a steady state.
+- **At each dose**: the last 2 min recorded at it. The steps at 1, 2 and 4 % lasted 2-5.5 min (the
+  1 % step of the 30 g mouse on 22 Oct only 2.1 min, so its last 2 min are almost the whole step),
+  and heart rate was often still changing at the end, so these are values after a few minutes, not
+  a steady state.
   In the tables, ± is the SD of the 10 s values over those 2 min, within one animal, as the
   literature reports vitals (Constantinides et al. 2011, Tsukamoto et al. 2015); the SNR and HRV
   are given as median (IQR) of the same values, since a few noisy windows skew them; next to the
@@ -53,17 +55,7 @@ Change `SESSION` at the top of `timeline.py` or `doses.py` for another session.
 
 ## Checks
 
-- Heart rate agrees with the ECG chip's own R-R detector within 5 % in 96-98 % of the 10 s
-  windows on 20 Oct and for the 25 g mouse. On the other days the chip misses beats (12-53 in 10 s
-  where there are about 90); where the PPG shows the heartbeat, it agrees with this heart rate
-  (88 of 91 such windows; the other 3 are at 1 % on 26 Oct, where the PPG does not show the
-  heartbeat).
-- Breathing rate agrees with the strongest frequency of the breathing band (Welch) within 10 % in
-  89-97 % of the windows.
-- On made-up signals with a known answer (`checks.py` in the main folder): the wave boundaries
-  within 0.3 ms of the true edges; the SNR within 0.1 dB at 3, -7 and -17 dB, also for sharp beats
-  between samples; the R times within 0.1 ms, also with 40 % of the marks on the J wave; with a
-  real recording's noise, 99.9 % of the beats found at 13 dB and 95 % at 4 dB.
+See the Checks section of the main README.
 
 ## Sources
 

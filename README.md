@@ -25,11 +25,11 @@ The code shared by the notebook and the scripts is in `mpcb/`, one module per st
 
 | Module | What it holds |
 |---|---|
-| `mpcb/recording.py` | `Recording`: one recording read from its CSV file (ECG in µV, PPG in nA, skin temperature, notes; the PPG on the ECG's clock), with methods to filter and measure it |
+| `mpcb/recording.py` | `Recording`: one recording read from its CSV file (ECG in µV, PPG in nA, skin temperature, notes; the PPG on the ECG's clock), with methods to filter it, measure it and check its quality (lost and clipped samples, SNR, HRV) |
 | `mpcb/filters.py` | preprocessing: every filter and its setting |
-| `mpcb/analysis.py` | R waves and R times, heart rate, breathing rate (per window and breath by breath), averaged beat and pulse, SNR, HRV and its floor |
+| `mpcb/analysis.py` | R waves and R times, heart rate from the ECG and the PPG, breathing rate (per window and breath by breath), averaged beat and pulse, perfusion index, SNR, HRV and its floor |
 | `mpcb/sessions.py` | `Session`: all recordings of one isoflurane session on one clock, the dose from the notes, the vitals every 10 s, the averaged beat at each dose and its wave boundaries |
-| `mpcb/stats.py` | mean ± SD over runs and t-tests against published values |
+| `mpcb/stats.py` | mean ± SD over runs, median (IQR) for the tables, t-tests against published values |
 | `mpcb/plotting.py` | the figure style and the panels of the step figures |
 
 Each function's description says what it does and how; `help()` shows it, e.g.
@@ -52,7 +52,6 @@ Run them from this folder; figures (PNG, PDF) and tables (CSV) are saved next to
 | `ecg_filter_steps.py` | the ECG stage by stage (`ecg_filter_steps.png`) | `FILE` |
 | `notch_differences.py` | the mains and ECG each notch removes (`notch_differences.png`) | `FILE` |
 | `ppg_vitals.py` | the PPG stage by stage; vitals per 30 s (`ppg_vitals.png`) | `FILE` |
-| `data_loss.py` | lost and clipped samples (printed) | `FILE` |
 | `quality.py` | signal quality per recording (`quality.csv`) | all 21 |
 | `hr_agreement.py` | PPG against ECG heart rate, Bland-Altman (`hr_agreement.pdf`) | 14: usable PPG, clear ECG, at least 20 s |
 | `checks.py` | the methods on made-up signals (printed) | 22 Oct 14:54:30 for real noise |
@@ -141,12 +140,12 @@ below.
 
 | What is checked | How | Result |
 |---|---|---|
-| each method on a signal with a known answer | `checks.py`: made-up signals for the SNR, R waves, R times, HRV and its floor, mains fit, breathing rate, wave boundaries and dose notes | ends with "all checks passed" |
+| each method on a signal with a known answer | `checks.py`: made-up signals for the SNR, R waves, R times, HRV and its floor, mains fit, breathing rate, wave boundaries and dose notes | SNR within 0.1 dB at 3, -7 and -17 dB, also for sharp beats between samples; R times within 0.1 ms, also with 40 % of the marks on the J wave; wave boundaries within 0.3 ms; ends with "all checks passed" |
 | R waves in real noise | `checks.py`: the noise of 22 Oct 14:54:30 as recorded, x2 and x3 | 99.9, 97 and 95 % of the beats found; heart rate right in all three |
 | ECG heart rate against a second sensor | `hr_agreement.py`: the PPG heart rate of each 30 s piece | within 5 % in 82 % of the pieces, and in 117 of 118 with a PPG SNR above -5 dB |
-| ECG heart rate against the ECG chip's own R-R detector | the `rtor_ms` column of the recordings, every 10 s (`isoflurane/README.md`) | within 5 % in 96-98 % of the windows on 20 Oct and for the 25 g mouse |
+| ECG heart rate against the ECG chip's own R-R detector | the `rtor_ms` column of the recordings, every 10 s | within 5 % in 96-98 % of the windows on 20 Oct and for the 25 g mouse; on the other days the chip misses beats (12-53 in 10 s where there are about 90), and where the PPG shows the heartbeat it agrees with this heart rate (88 of 91 windows; the other 3 are at 1 % on 26 Oct, where the PPG does not show the heartbeat) |
 | breathing rate by a second method | the strongest frequency of the breathing band (Welch) against the autocorrelation | within 10 % in 89-97 % of the windows |
-| lost and clipped samples | `data_loss.py`, `quality.py` | no lost samples in any of the 21 recordings; at most 0.15 % of the ECG clipped |
+| lost and clipped samples | `quality.py` (`Recording.lost_samples`, `mains_hz`, `clipped`) | no lost samples in any of the 21 recordings; at most 0.15 % of the ECG clipped |
 
 Not checked:
 

@@ -13,6 +13,8 @@ import io
 import os
 import sys
 
+import pandas as pd
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 from mpcb import stats  # noqa: E402
@@ -40,9 +42,10 @@ def intervals():
     path = os.path.join(os.path.dirname(HERE), "isoflurane", "ecg.csv")
     if not os.path.exists(path):
         raise SystemExit("Run isoflurane/table.py first: it writes isoflurane/ecg.csv.")
-    out, run = {}, None
-    for row in csv.DictReader(open(path, encoding="utf-8-sig")):
-        run = row["Run"] or run
+    out = {}
+    with open(path, encoding="utf-8-sig") as f:
+        rows = list(csv.DictReader(f))
+    for row in rows:
         if row["Isoflurane (%)"] not in ("1", "2", "4"):
             continue
         for key, column in [("P", "P duration (ms)"), ("PQ", "PQ (ms)"), ("QRS", "QRS (ms)")]:
@@ -65,10 +68,7 @@ for key, dose, study, condition, mean, sd, n in PUBLISHED:
                  "Dose (%)": dose, "Ours (mean ± SD)": "%.1f ± %.1f" % (m, s), "Ours n": k,
                  "Published (mean ± SD)": "%.1f ± %.1f" % (mean, sd), "Published n": n,
                  "Study": study, "Condition": condition, "t": "%.2f" % t, "p": "%.3f" % p})
-with open(os.path.join(HERE, "t_tests.csv"), "w", newline="", encoding="utf-8-sig") as f:
-    writer = csv.DictWriter(f, list(rows[0]))
-    writer.writeheader()
-    writer.writerows(rows)
+pd.DataFrame(rows).to_csv(os.path.join(HERE, "t_tests.csv"), index=False, encoding="utf-8-sig")
 for row in rows:
     print("%-24s %g %%  ours %-13s (n=%d)  %-29s %-13s (n=%3d)  p = %s" % (
         row["Value"], row["Dose (%)"], row["Ours (mean ± SD)"], row["Ours n"], row["Study"],

@@ -15,10 +15,10 @@ import io
 import os
 import re
 from datetime import datetime
+from functools import lru_cache
 
 import numpy as np
 from scipy.interpolate import CubicSpline
-from scipy.signal import welch
 
 from . import analysis, filters
 from .recording import DATA, Recording, unzip
@@ -62,8 +62,9 @@ def dose_in(note):
     return None
 
 
+@lru_cache(maxsize=None)
 def vitals(name):
-    """The session every 10 s, as a dict of arrays.
+    """The session every 10 s, as a dict of arrays; worked out once per session, then kept.
 
     Every 10 s: time ("t", s from the first recording's start), dose ("dose", %), heart rate ("hr",
     from the ECG's R-R intervals, analysis.window_heart_rate), skin temperature ("temp", median, °C).
@@ -140,12 +141,9 @@ def vitals(name):
                 continue
             near = (tp >= middle - WINDOW_S / 2) & (tp < middle + WINDOW_S / 2)
             v["breathing"].append(analysis.breathing_rate(breath[near], fp))
-            fr, p = welch(heart[near], fs=fp, nperseg=int(10 * fp), nfft=int(WINDOW_S * fp))
-            band = (fr >= filters.HEART_HZ[0]) & (fr <= filters.HEART_HZ[1])
-            v["ppg_hr"].append(60 * fr[band][np.argmax(p[band])])
+            v["ppg_hr"].append(analysis.ppg_heart_rate(heart[near], fp, WINDOW_S))
             in_window = (r_times >= middle - WINDOW_S / 2) & (r_times < middle + WINDOW_S / 2)
-            pulse = analysis.averaged(heart, pulses[in_window], int(0.15 * fp))
-            v["pi"].append(np.nan if pulse is None else 100 * np.ptp(pulse) / np.mean(ppg[near]))
+            v["pi"].append(analysis.perfusion_index(heart, pulses[in_window], ppg[near], int(0.15 * fp)))
             v["ppg_snr"].append(analysis.snr_db(tp, heart, beat_t, period) if len(beat_t) >= 10 else np.nan)
 
     v = {k: np.array(x) for k, x in v.items()}
@@ -162,8 +160,11 @@ def vitals(name):
     b[np.abs(b / around - 1) > 0.3] = np.nan
     v["pi"][~(np.abs(v["ppg_hr"] / v["hr"] - 1) <= 0.05)] = np.nan
     v["changes"] = sorted(changes)
-    v["end"] = v["t"][-1] + STEP_S / 2
+    v["end"] = float(v["t"][-1] + STEP_S / 2)
     v["dose"] = np.array([dose_at(v["changes"], x) for x in v["t"]])
+    for x in v.values():
+        if isinstance(x, np.ndarray):
+            x.flags.writeable = False            # kept for later calls (lru_cache), so it must not change
     return v
 
 
@@ -359,7 +360,6 @@ class Session:
         self.name = name
         self.files = files(name)
         self.start = started(self.files[0])
-        self._vitals = None
 
     def __repr__(self):
         return "Session(%r: %d recordings)" % (self.name, len(self.files))
@@ -371,9 +371,7 @@ class Session:
 
     def vitals(self):
         """The vitals every 10 s (see vitals()); worked out once, then kept."""
-        if self._vitals is None:
-            self._vitals = vitals(self.name)
-        return self._vitals
+        return vitals(self.name)
 
     def doses(self):
         """[(dose %, start s, end s)] for each stretch at one dose."""

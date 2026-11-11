@@ -1,15 +1,15 @@
 """The methods tried on made-up signals whose answer is known, the last one built from a real
 recording's beat and noise. Each line prints what was found against the known value; an
 AssertionError means a method no longer finds it."""
-import os
-import sys
+import contextlib
+import io
 
 import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.signal import butter, sosfiltfilt
 
 from mpcb import analysis, filters, sessions
-from mpcb.recording import Recording
+from mpcb.recording import FILE, Recording
 
 rng = np.random.default_rng(1)
 fs = 512
@@ -57,19 +57,10 @@ assert abs(found[0] / sdnn - 1) < 0.02 and abs(found[1] / rmssd - 1) < 0.02
 # R waves and R times: beats with R, S and a J wave as tall as R; 40 % of the marks put on J
 t = np.arange(60 * fs) / fs
 true = 0.2 + np.cumsum(0.150 + rng.normal(0, 0.0005, 390))
-
-
-def bumps(centres, width):
-    """Sum of Gaussian bumps of the given width (s) at the given centres (s), sampled at t."""
-    return np.exp(-0.5 * ((t[:, None] - centres) / width) ** 2).sum(axis=1)
-
-
 ecg = 400 * bumps(true, 0.0025) - 350 * bumps(true + 0.004, 0.002) + 420 * bumps(true + 0.010, 0.003)
 ecg = ecg + rng.normal(0, 15, len(t))
-with open(os.devnull, "w") as quiet:
-    stdout, sys.stdout = sys.stdout, quiet
+with contextlib.redirect_stdout(io.StringIO()):
     r = analysis.r_waves(ecg, fs)
-    sys.stdout = stdout
 print("R waves: %d found of %d" % (len(r), len(true)))
 assert abs(len(r) - len(true)) <= 2
 marks = np.round((true + 0.010 * (rng.random(len(true)) < 0.4)) * fs).astype(int)
@@ -130,38 +121,18 @@ print("dose notes: all read right")
 
 # real noise: 2 min of 22 Oct 14:54:30; its averaged beat taken out at every R time and put back at
 # known times (its own rhythm played backwards, or perfectly regular), with the noise made larger
-with open(os.devnull, "w") as quiet:
-    stdout, sys.stdout = sys.stdout, quiet
-    rec = Recording(os.path.join(sessions.DATA, "mouse_isoflurane_20261022", "mouse_30g", "mice_anest_20261022_145430.csv"))
+with contextlib.redirect_stdout(io.StringIO()):
+    rec = Recording(FILE)
     part = (rec.t_ecg >= 300) & (rec.t_ecg < 420)
     t, ecg = rec.t_ecg[part], rec.ecg[part]
     real = analysis.r_times(ecg, t, fs, analysis.r_waves(ecg, fs))
-    sys.stdout = stdout
-real = real[~np.isnan(real)]
-period = np.median(np.diff(real))
-offsets = np.arange(-0.45 * period, 0.55 * period, 1 / fs)
-real = real[(real + offsets[0] > t[0]) & (real + offsets[-1] < t[-1])]
-average = np.median(CubicSpline(t, ecg)(real[:, None] + offsets), axis=0)
-average = average - np.linspace(average[0], average[-1], len(average))
-edge = np.clip(np.minimum(offsets - offsets[0], offsets[-1] - offsets) / 0.005, 0, 1)
-shape = CubicSpline(offsets, average * 0.5 * (1 - np.cos(np.pi * edge)))
-
-
-def beats_at(times):
-    """The averaged beat placed at each of the given times (s): a made-up ECG with a known rhythm."""
-    out = np.zeros(len(t))
-    for c in times:
-        k = slice(np.searchsorted(t, c + offsets[0]), np.searchsorted(t, c + offsets[-1]))
-        out[k] += shape(t[k] - c)
-    return out
+real, period, beats_at = analysis.beat_model(ecg, t, fs, real[~np.isnan(real)])
 
 
 def found_at(x):
     """R-wave times (s) that r_waves and r_times find in x, without the ones they cannot match."""
-    with open(os.devnull, "w") as quiet:
-        stdout, sys.stdout = sys.stdout, quiet
+    with contextlib.redirect_stdout(io.StringIO()):
         found = analysis.r_times(x, t, fs, analysis.r_waves(x, fs))
-        sys.stdout = stdout
     return found[~np.isnan(found)]
 
 

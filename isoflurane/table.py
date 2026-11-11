@@ -18,14 +18,14 @@ coefficient of variation (CV = 100 x SD / mean; not for temperature, as °C has 
 the wave sizes.
 Saved in this folder.
 """
-import csv
 import os
 import sys
 
 import numpy as np
+import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the main folder
-from mpcb import sessions  # noqa: E402
+from mpcb import sessions, stats  # noqa: E402
 
 RUNS = [("22 Oct, 30 g", "Mouse 1 (30 g), 22 Oct"),
         ("26 Oct, 30 g", "Mouse 1 (30 g), 26 Oct"),
@@ -51,19 +51,11 @@ def mean_sd(x, fmt):
     return (fmt + " ± " + fmt) % (np.mean(x), np.std(x, ddof=1))
 
 
-def median_iqr(v, key, start, end, fmt):
-    """'median (quartile 1 to quartile 3)' of v[key] in the last 2 min at a dose, or '-'."""
-    m = sessions.steady(v, key, start, end)
-    return "-" if m is None else (fmt + " (" + fmt + "–" + fmt + ")") % m
-
-
 def write(rows, name):
     """Save the rows (a list of dicts) as a CSV file in this folder and print them as a table."""
     columns = list(rows[0].keys())
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), name), "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, columns)
-        writer.writeheader()
-        writer.writerows(rows)
+    pd.DataFrame(rows).to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), name), index=False,
+                              encoding="utf-8-sig")
     lines = [columns] + [[str(row[c]) for c in columns] for row in rows]
     widths = [max(len(line[i]) for line in lines) for i in range(len(columns))]
     print("\n" + name)
@@ -97,7 +89,7 @@ for name, label in RUNS:
             p = value(points)
             row[title] = "%.1f" % p if repeats and "ms" in title else "%.0f" % p if repeats else "-"
         for key, title, fmt in SIGNAL:
-            row[title] = median_iqr(d["v"], key, c["start"], c["end"], fmt)
+            row[title] = stats.median_iqr(sessions.last_values(d["v"], key, c["start"], c["end"]), fmt, least=3)
         floor = sessions.hrv_floor(c)
         row["SDNN floor (ms)"] = "%.2f" % floor[0] if np.isfinite(floor[0]) else "-"
         row["RMSSD floor (ms)"] = "%.2f" % floor[1] if np.isfinite(floor[1]) else "-"

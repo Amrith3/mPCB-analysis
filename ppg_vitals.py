@@ -1,7 +1,7 @@
 """PPG (IR) filtering stages and vitals per 30 s window: heart rate, breathing rate, perfusion index."""
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.signal import find_peaks, welch
+from scipy.signal import find_peaks
 
 from mpcb import analysis, filters, plotting
 from mpcb.recording import Recording
@@ -43,11 +43,7 @@ for start in np.arange(t[0], t[-1] - WINDOW_S, WINDOW_S):
     else:
         ecg_rate.append(np.nan)
 
-    f, p = welch(heart[inside], fs=fs, nperseg=int(10 * fs), nfft=int(WINDOW_S * fs))
-    band = (f >= filters.HEART_HZ[0]) & (f <= filters.HEART_HZ[1])
-    f_band = f[band]
-    p_band = p[band]
-    ppg_rate.append(60 * f_band[np.argmax(p_band)])
+    ppg_rate.append(analysis.ppg_heart_rate(heart[inside], fs, WINDOW_S))
 
     rate = analysis.breathing_rate(breathing[inside], fs)
     breathing_per_minute.append(rate)
@@ -56,16 +52,11 @@ for start in np.arange(t[0], t[-1] - WINDOW_S, WINDOW_S):
         first = np.flatnonzero(inside)[0]
         breaths.extend(first + peaks)
 
-    pulse = analysis.averaged(heart, pulses[beats_inside], pulse_half)
-    if pulse is None:
-        perfusion.append(np.nan)
-    else:
-        perfusion.append(100 * np.ptp(pulse) / np.mean(ppg[inside]))
+    perfusion.append(analysis.perfusion_index(heart, pulses[beats_inside], ppg[inside], pulse_half))
 
 ecg_rate = np.array(ecg_rate)
 ppg_rate = np.array(ppg_rate)
 agree = np.abs(ppg_rate / ecg_rate - 1) <= 0.05
-pulse = analysis.averaged(heart, pulses, pulse_half)
 print("IR light level:", round(np.mean(raw)), "nA")
 print("heart rate (median of the windows): ECG", round(np.nanmedian(ecg_rate)), "per minute, PPG",
       round(np.median(ppg_rate)), "per minute; the PPG is within 5 % of the ECG in", np.sum(agree), "of",
@@ -79,15 +70,16 @@ if np.any(clear):
 else:
     typical = 60
     print("breathing rate: no clear breathing in any window")
-print("perfusion index (size of the averaged pulse, % of the light level):", round(100 * np.ptp(pulse) / np.mean(ppg), 3), "%")
+print("perfusion index (size of the averaged pulse, % of the light level):",
+      round(analysis.perfusion_index(heart, pulses, ppg, pulse_half), 3), "%")
 
 breath_half = int(0.6 * fs * 60 / typical)
 c = filters.click(fs)
 # name, signal, signal before this filter, impulse response, centres, half width
 rows = [["raw IR light", raw, None, None, pulses, pulse_half],
         ["IR after the " + str(filters.PPG_LP_HZ) + " Hz low-pass", ppg, raw, filters.ppg_lowpass(c, fs), pulses, pulse_half],
-        ["IR heart band " + str(filters.HEART_HZ) + " Hz", heart, ppg, filters.heart_band(c, fs), pulses, pulse_half],
-        ["IR breathing band " + str(filters.BREATH_HZ) + " Hz", breathing, ppg, filters.breathing_band(c, fs), breaths, breath_half]]
+        ["IR heart band %g-%g Hz" % tuple(filters.HEART_HZ), heart, ppg, filters.heart_band(c, fs), pulses, pulse_half],
+        ["IR breathing band %g-%g Hz" % tuple(filters.BREATH_HZ), breathing, ppg, filters.breathing_band(c, fs), breaths, breath_half]]
 averaged_name = ["averaged pulse (on the R waves)", "averaged pulse (on the R waves)",
                  "averaged pulse (on the R waves)", "averaged breath"]
 
