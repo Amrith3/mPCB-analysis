@@ -14,9 +14,9 @@ every band inside it. Filled numbers: ECG waveform; open numbers: rhythms. A pub
 too close to tell apart are drawn side by side.
 
 Our bands: every stretch at one dose in each run of stats.RUNS, its last 2 min
-(sessions.dose_averages). The waves are cut from the averaged beat of the stretch at its boundaries
-(sessions.ecg_points): P on to P off, and QRS on to S for the R wave. The straight line through the
-ends is taken off, then FFT; the band holds the middle 90 % of the wave's energy, counted from the
+(sessions.dose_averages). The waves are cut from the averaged beat of the stretch, read every 1/8192 s,
+at its boundaries (sessions.ecg_points): P on to P off, and QRS on to S for the R wave. The straight
+line through the ends is taken off, then FFT; the band holds the middle 90 % of the wave's energy, counted from the
 heart rate up: a beat repeats at the heart rate, so it holds nothing slower (Buendía-Fuentes et al.
 2012). Our ECG's power: the same FFT of the whole averaged beat, and the band from 0 Hz holding 98 %
 of its energy, as Ai et al. (1996) give it for the mouse ECG. The median over the stretches is drawn,
@@ -45,6 +45,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from scipy.interpolate import CubicSpline
 from scipy.signal import welch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the main folder
@@ -78,13 +79,16 @@ ITEMS = [
 def wave_spectrum(t_ms, beat, start, end):
     """Frequencies (Hz) and energy spectrum of the averaged beat from start to end (ms).
 
-    How: the straight line through the first and the last point is taken off, so the wave starts
-    and ends at zero, and zeros are added to 8192 points before the FFT (0.06 Hz steps).
+    How: the beat is read every 1/8192 s (cubic spline), as sessions.ecg_points reads it to find the
+    boundaries, so the piece starts and ends exactly there; at 2 ms between samples a mouse R wave
+    holds only 3-6 samples, too few to cut it precisely. The straight line through the first and
+    the last point is taken off, so the wave starts and ends at zero, and zeros are added to 2^17
+    points before the FFT (0.06 Hz steps).
     """
-    fs = 1000 / (t_ms[1] - t_ms[0])
-    inside = (t_ms >= start) & (t_ms <= end)
-    wave = beat[inside] - np.linspace(beat[inside][0], beat[inside][-1], np.sum(inside))
-    return np.fft.rfftfreq(8192, 1 / fs), np.abs(np.fft.rfft(wave, 8192)) ** 2
+    t = np.arange(t_ms[0], t_ms[-1], 1000 / 8192)
+    wave = CubicSpline(t_ms, beat)(t[(t >= start) & (t <= end)])
+    wave = wave - np.linspace(wave[0], wave[-1], len(wave))
+    return np.fft.rfftfreq(2 ** 17, 1 / 8192), np.abs(np.fft.rfft(wave, 2 ** 17)) ** 2
 
 
 def band(f, energy, heart_hz, share=(0.05, 0.95)):
