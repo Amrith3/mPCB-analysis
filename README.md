@@ -43,6 +43,7 @@ py -3.13 scripts/checks.py
 |---|---|---|
 | `scripts/ecg_filter_steps.py` | `ecg_filter_steps.png`: the ECG after each filter step | `FILE` |
 | `scripts/notch_differences.py` | `notch_differences.png`: the mains and the ECG each notch removes | `FILE` |
+| `scripts/ecg_frequency_map.py` | `ecg_frequency_ranges.png` (bars on one frequency axis) and `ecg_frequency_map.png` (low cut against high cut): the ECG's frequency bands, human and mouse, against what a recorder keeps | the 3 dose runs, every session |
 | `scripts/ppg_vitals.py` | `ppg_vitals.png`: the PPG after each filter step, and the vitals every 30 s | `FILE` |
 | `scripts/quality.py` | `quality.csv`: the signal quality of every recording | all 21 |
 | `scripts/hr_agreement.py` | `hr_agreement.png`: PPG against ECG heart rate (Bland-Altman) | 14: usable PPG and a clear ECG |
